@@ -14,11 +14,11 @@ const explore = [
 
 export function SiteFooter() {
   return (
-    <footer className="mt-20 bg-olive-deep text-paper">
+    <footer className="mt-20 border-t border-line bg-sidebar text-ink">
       <Container className="grid gap-10 py-14 md:grid-cols-[1.4fr_1fr_1fr]">
         <div>
           <Logo tone="lime" />
-          <p className="mt-4 max-w-sm text-sm leading-6 text-paper/80">
+          <p className="mt-4 max-w-sm text-sm leading-6 text-muted">
             Give electronics a second life. Scrapo is a prototype for collection, refurbishment, student donation, and rewards.
           </p>
         </div>
@@ -43,8 +43,8 @@ export function SiteFooter() {
           </ul>
         </div>
       </Container>
-      <div className="border-t border-white/10">
-        <Container className="py-5 text-xs text-paper/70">
+      <div className="border-t border-line">
+        <Container className="py-5 text-xs text-muted">
           Sample figures on the marketing page are published context or clearly marked prototype numbers. Scrapo does not send them to a server.
         </Container>
       </div>

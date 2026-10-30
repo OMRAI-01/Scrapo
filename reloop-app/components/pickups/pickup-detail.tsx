@@ -3,25 +3,30 @@
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { DemoBanner, ErrorState, PageSkeleton, Pill } from "@/components/ui/feedback";
+import { ErrorState, PageSkeleton, Pill } from "@/components/ui/feedback";
 import { formatDate, statusLabel } from "@/lib/format";
-import { pickups as samplePickups } from "@/lib/mock/data";
+import { createClient } from "@/lib/supabase/client";
+import { loadPickups } from "@/lib/supabase/records";
+import { useLive } from "@/lib/supabase/use-live";
 import { usePrototype } from "@/lib/prototype/session";
-import { useDemoResource } from "@/lib/prototype/use-demo-resource";
+import { DonationCertificate } from "@/components/pickups/donation-certificate";
 import { cx } from "@/lib/cx";
 
 export function PickupDetail({ id }: { id: string }) {
   const router = useRouter();
-  const { ready, drafts } = usePrototype();
-  const demo = useDemoResource(id);
-  const pickup = [...drafts, ...samplePickups].find((item) => item.id === id);
+  const { profile } = usePrototype();
+  const live = useLive(`pickup:${id}`, () => loadPickups(createClient()));
+  const pickup = live.data?.find((item) => item.id === id);
 
-  if (!ready || demo.phase === "loading") return <PageSkeleton cards={2} />;
+  if (live.phase === "loading") return <PageSkeleton cards={2} />;
+  if (live.phase === "error") {
+    return <ErrorState title="This pickup did not load" text={live.message} onRetry={live.retry} />;
+  }
   if (!pickup) {
     return (
       <ErrorState
         title="No pickup matches that link"
-        text="The id is not in the demo set or in listings saved in this browser."
+        text="That record is not in your account."
         onRetry={() => router.push("/pickups")}
       />
     );
@@ -32,16 +37,25 @@ export function PickupDetail({ id }: { id: string }) {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <p className="text-sm font-semibold text-olive">Pickup {pickup.id}</p>
-          <h1 className="mt-1 text-3xl font-medium tracking-tight sm:text-4xl">{pickup.deviceName}</h1>
+          <h1 className="mt-1 text-3xl font-extrabold tracking-tight sm:text-4xl">{pickup.deviceName}</h1>
           <p className="mt-2 text-sm text-muted">{pickup.address}, {pickup.city}</p>
         </div>
         <Button href="/pickups" variant="ghost">All pickups</Button>
       </div>
-      <DemoBanner>
-        {pickup.source === "session"
-          ? "This request exists only in this browser. The recycler and later steps are placeholders."
-          : "This timeline is a demo sample, including the recycler contact details."}
-      </DemoBanner>
+      {pickup.status === "donated" || pickup.status === "completed" ? (
+        <DonationCertificate
+          donor={profile.name}
+          device={pickup.deviceName}
+          city={pickup.city}
+          date={formatDate(
+            pickup.timeline.find((event) => event.status === "donated" && event.at)?.at ??
+              pickup.collectionDate ??
+              pickup.timeline.find((event) => event.at)?.at ??
+              new Date().toISOString(),
+          )}
+          certificateId={pickup.id}
+        />
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
         <Card>
           <h2 className="text-lg font-medium">Collection</h2>

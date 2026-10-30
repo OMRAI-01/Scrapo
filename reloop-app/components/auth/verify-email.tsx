@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { homeForRole } from "@/lib/prototype/model";
 import { usePrototype } from "@/lib/prototype/session";
+import { createClient } from "@/lib/supabase/client";
 import type { Role } from "@/lib/types";
 
 const states = [
@@ -32,16 +34,29 @@ export function VerifyEmail({
 }) {
   const router = useRouter();
   const { signIn } = usePrototype();
+  const [error, setError] = useState("");
   const safeRole: Role = isRole(role) ? role : "donor";
   const query = new URLSearchParams({ status, name, email, role: safeRole });
 
-  function finish() {
+  async function finish() {
+    const supabase = createClient();
+    const { data, error: userError } = await supabase.auth.getUser();
+    if (userError || !data.user?.email_confirmed_at) {
+      setError("This email is not verified yet. Open the link Supabase sent, then come back.");
+      return;
+    }
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("full_name, role")
+      .eq("id", data.user.id)
+      .single();
+    const nextRole = profile?.role ?? safeRole;
     signIn({
-      name: name || "New member",
-      email: email || "member@example.com",
-      role: safeRole,
+      name: profile?.full_name || name || "New member",
+      email: data.user.email || email,
+      role: nextRole,
     });
-    router.push(homeForRole(safeRole));
+    router.push(homeForRole(nextRole));
   }
 
   return (
@@ -59,7 +74,7 @@ export function VerifyEmail({
               aria-selected={active}
               className={
                 active
-                  ? "rounded-full bg-olive px-3 py-1.5 text-xs font-semibold text-paper"
+                  ? "rounded-full bg-olive px-3 py-1.5 text-xs font-semibold text-on-accent"
                   : "rounded-full border border-line bg-card px-3 py-1.5 text-xs font-semibold text-ink"
               }
             >
@@ -71,7 +86,7 @@ export function VerifyEmail({
 
       {status === "sent" ? (
         <>
-          <h1 className="text-4xl font-medium tracking-tight">Verify your email</h1>
+          <h1 className="text-4xl font-extrabold tracking-tight">Verify your email</h1>
           <p className="mt-3 text-sm leading-6 text-muted">
             A live app would email {email || "you"} a link. Here, the message never leaves the browser. Open the other states to see what happens next.
           </p>
@@ -87,10 +102,11 @@ export function VerifyEmail({
 
       {status === "verified" ? (
         <>
-          <h1 className="text-4xl font-medium tracking-tight">Email verified</h1>
+          <h1 className="text-4xl font-extrabold tracking-tight">Email verified</h1>
           <p className="mt-3 text-sm leading-6 text-muted">
-            {name || "Your account"} can open the {safeRole} prototype. Points and pickups will still be the shared demo set.
+            {name || "Your account"} can open the {safeRole} desk. Points and pickups come from your account.
           </p>
+          {error ? <p className="mt-4 text-sm text-danger" role="alert">{error}</p> : null}
           <Button className="mt-8" onClick={finish}>
             Enter Scrapo
           </Button>
@@ -99,7 +115,7 @@ export function VerifyEmail({
 
       {status === "expired" ? (
         <>
-          <h1 className="text-4xl font-medium tracking-tight">This link expired</h1>
+          <h1 className="text-4xl font-extrabold tracking-tight">This link expired</h1>
           <p className="mt-3 text-sm leading-6 text-muted">
             The preview link is older than the window a live email would allow. Send yourself back to the fresh state, or start again.
           </p>

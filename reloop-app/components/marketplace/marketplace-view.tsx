@@ -5,19 +5,29 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DescriptionBox } from "@/components/ui/description-box";
 import { TextInput } from "@/components/ui/field";
-import { DemoBanner, EmptyState, PageSkeleton, Pill } from "@/components/ui/feedback";
+import { EmptyState, ErrorState, PageSkeleton, Pill } from "@/components/ui/feedback";
 import { categoryLabel, formatInr } from "@/lib/format";
-import { assistanceRequests, listings } from "@/lib/mock/data";
 import { usePrototype } from "@/lib/prototype/session";
-import { useDemoResource } from "@/lib/prototype/use-demo-resource";
+import { createClient } from "@/lib/supabase/client";
+import { createAssistance, loadAssistance, loadListings } from "@/lib/supabase/records";
+import { useLive } from "@/lib/supabase/use-live";
+import type { Category } from "@/lib/types";
+
+const deviceWords: Category[] = ["phone", "laptop", "tablet", "monitor", "appliance", "accessory"];
 
 export function MarketplaceView() {
   const { ready, profile } = usePrototype();
-  const demo = useDemoResource("marketplace");
+  const live = useLive("marketplace", async () => {
+    const supabase = createClient();
+    const [listings, requests] = await Promise.all([loadListings(supabase), loadAssistance(supabase)]);
+    return { listings, requests };
+  });
   const [query, setQuery] = useState("");
   const [requestNote, setRequestNote] = useState("");
   const [requestError, setRequestError] = useState("");
   const [sent, setSent] = useState(false);
+  const listings = live.data?.listings ?? [];
+  const assistanceRequests = live.data?.requests ?? [];
 
   const devices = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -25,21 +35,21 @@ export function MarketplaceView() {
     return listings.filter((item) =>
       `${item.title} ${item.campus} ${item.category} ${item.donation}`.toLowerCase().includes(needle),
     );
-  }, [query]);
+  }, [listings, query]);
 
-  if (!ready || demo.phase === "loading") return <PageSkeleton />;
+  if (!ready || live.phase === "loading") return <PageSkeleton />;
+  if (live.phase === "error") return <ErrorState title="The marketplace did not load" text={live.message} onRetry={live.retry} />;
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
       <div>
         <p className="text-sm font-semibold text-olive">Student marketplace</p>
-        <h1 className="mt-1 text-3xl font-medium tracking-tight sm:text-4xl">Devices ready for a second desk</h1>
+        <h1 className="mt-1 text-3xl font-extrabold tracking-tight sm:text-4xl">Devices ready for a second desk</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
           Refurbished stock, open assistance requests, and where each donation stands.
-          {profile.role === "student" ? " You are previewing this as a student." : " Switch the demo role to Student if you want that label on the session."}
+          {profile.personalized ? ` Signed in as ${profile.name}.` : " Sign in to request a device."}
         </p>
       </div>
-      <DemoBanner />
 
       <section className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -56,7 +66,7 @@ export function MarketplaceView() {
         {devices.length === 0 ? (
           <EmptyState
             title="No devices match that search"
-            text="Try a campus, a category such as laptop, or clear the search to see the sample stock."
+            text="No refurbished devices are listed yet, or none match that search."
             action={<Button variant="ghost" onClick={() => setQuery("")}>Clear search</Button>}
           />
         ) : (
@@ -87,6 +97,7 @@ export function MarketplaceView() {
         <div>
           <h2 className="text-xl font-medium">Student assistance requests</h2>
           <ul className="mt-4 space-y-3">
+            {assistanceRequests.length === 0 ? <EmptyState title="No requests yet" text="A signed-in student can file one from this page." /> : null}
             {assistanceRequests.map((request) => (
               <li key={request.id}>
                 <Card>
@@ -105,7 +116,7 @@ export function MarketplaceView() {
         <Card>
           <h2 className="text-xl font-medium">Ask for a device</h2>
           <p className="mt-2 text-sm leading-6 text-muted">
-            This note stays on the page. It is not filed as a real assistance request.
+            This is saved as an assistance request on your account. Mention the kind of device you need.
           </p>
           <div className="mt-4">
             <DescriptionBox
@@ -131,24 +142,34 @@ export function MarketplaceView() {
           </div>
           {sent ? (
             <p className="mt-3 text-sm font-semibold text-olive" role="status">
-              Saved in this view only. Refreshing clears it.
+              Request saved.
             </p>
           ) : null}
           <Button
             className="mt-4"
             variant="olive"
             onClick={() => {
-              if (requestNote.trim().length < 24) {
+              const note = requestNote.trim();
+              const category = deviceWords.find((word) => note.toLowerCase().includes(word));
+              if (note.length < 24 || !category) {
                 setSent(false);
-                setRequestError("Describe what you need, or use Fill description.");
+                setRequestError(category ? "Describe what you need, or use Fill description." : "Name the device: phone, laptop, tablet, monitor, appliance, or accessory.");
                 document.getElementById("need")?.focus();
                 return;
               }
               setRequestError("");
-              setSent(true);
+              createAssistance(createClient(), { need: note, campus: profile.city, category })
+                .then(() => {
+                  setSent(true);
+                  live.retry();
+                })
+                .catch((error: unknown) => {
+                  setSent(false);
+                  setRequestError(error instanceof Error ? error.message : "The request was not saved.");
+                });
             }}
           >
-            Keep this note here
+            Send request
           </Button>
         </Card>
       </section>

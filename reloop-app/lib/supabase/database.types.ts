@@ -94,8 +94,26 @@ export type Database = {
         points: number;
         published: boolean;
       }>;
+      pickup_events: Table<{
+        id: string;
+        pickup_id: string;
+        status: string;
+        note: string;
+        happened_at: string;
+      }>;
     };
-    Views: Record<string, never>;
+    Views: {
+      leaderboard: {
+        Row: {
+          id: string;
+          full_name: string;
+          city: string | null;
+          points_month: number;
+          points_lifetime: number;
+        };
+        Relationships: [];
+      };
+    };
     Functions: Record<string, never>;
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

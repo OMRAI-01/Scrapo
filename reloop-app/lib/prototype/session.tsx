@@ -3,22 +3,35 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useMemo,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { demoProfile } from "@/lib/mock/data";
 import {
   emptyAdmin,
   type InspectionNote,
 } from "@/lib/prototype/model";
+import { createClient } from "@/lib/supabase/client";
+import { loadProfile } from "@/lib/supabase/records";
 import type { DemoProfile, PickupRecord, RewardEvent, Role } from "@/lib/types";
 import type { PrototypeState } from "@/lib/prototype/model";
 
 const STORAGE_KEY = "reloop.prototype.v1";
 
+const guestProfile: DemoProfile = {
+  name: "",
+  email: "",
+  role: "donor",
+  city: "",
+  pointsMonth: 0,
+  pointsLifetime: 0,
+  rank: 0,
+  personalized: false,
+};
+
 const serverSnapshot: PrototypeState = {
-  profile: demoProfile,
+  profile: guestProfile,
   drafts: [],
   inspections: {},
   admin: emptyAdmin(),
@@ -43,7 +56,7 @@ function hydrate() {
     const parsed = JSON.parse(raw) as PrototypeState;
     if (!parsed?.profile?.email || !parsed.profile.role) return;
     current = {
-      profile: { ...demoProfile, ...parsed.profile },
+      profile: guestProfile,
       drafts: Array.isArray(parsed.drafts) ? parsed.drafts : [],
       inspections: parsed.inspections ?? {},
       admin: { ...emptyAdmin(), ...parsed.admin },
@@ -97,6 +110,16 @@ export function PrototypeSessionProvider({ children }: { children: ReactNode }) 
   const ready = useSyncExternalStore(emptySubscribe, () => true, () => false);
   const state = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
+  useEffect(() => {
+    const supabase = createClient();
+    loadProfile(supabase)
+      .then((profile) => {
+        if (!profile) return;
+        emit({ ...current, profile });
+      })
+      .catch(() => {});
+  }, []);
+
   const value = useMemo<SessionContextValue>(() => {
     const update = (recipe: (snapshot: PrototypeState) => PrototypeState) => {
       emit(recipe(current));
@@ -110,11 +133,13 @@ export function PrototypeSessionProvider({ children }: { children: ReactNode }) 
           ...snapshot,
           profile: { ...snapshot.profile, ...next, personalized: true },
         })),
-      signOut: () =>
+      signOut: () => {
+        void createClient().auth.signOut();
         update((snapshot) => ({
           ...snapshot,
-          profile: demoProfile,
-        })),
+          profile: guestProfile,
+        }));
+      },
       setRole: (role) =>
         update((snapshot) => ({
           ...snapshot,

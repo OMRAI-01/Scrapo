@@ -7,16 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Field, SelectInput, TextInput } from "@/components/ui/field";
 import { homeForRole } from "@/lib/prototype/model";
 import { usePrototype } from "@/lib/prototype/session";
+import { createClient } from "@/lib/supabase/client";
 import type { Role } from "@/lib/types";
-
-function nameFromEmail(email: string) {
-  const local = email.split("@")[0] ?? "Guest";
-  return local
-    .split(/[._-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
 
 export function LoginForm() {
   const router = useRouter();
@@ -27,27 +19,44 @@ export function LoginForm() {
   const [show, setShow] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const next: { email?: string; password?: string } = {};
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) next.email = "Enter an email address.";
-    if (password.length < 8) next.password = "Use at least 8 characters. It stays on this page.";
+    if (password.length < 8) next.password = "Use at least 8 characters.";
     setErrors(next);
     if (Object.keys(next).length) return;
-    signIn({ name: nameFromEmail(email), email, role });
-    router.push(homeForRole(role));
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+    if (error || !data.user) {
+      setErrors({ password: error?.message ?? "Sign-in failed." });
+      return;
+    }
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("full_name, role")
+      .eq("id", data.user.id)
+      .single();
+    if (profileError || !profile) {
+      setErrors({ password: profileError?.message ?? "No profile was created for this account." });
+      return;
+    }
+    signIn({ name: profile.full_name, email: data.user.email ?? email.trim(), role: profile.role });
+    router.push(homeForRole(profile.role));
   }
 
-  function enterDemo(nextRole: Role, name: string, emailAddress: string) {
-    signIn({ name, email: emailAddress, role: nextRole });
-    router.push(homeForRole(nextRole));
+  function enterDemo() {
+    setErrors({ email: "Sample profiles are not accounts. Sign up, or log in with an email that exists in Supabase." });
   }
 
   return (
     <div>
-      <h1 className="text-4xl font-medium tracking-tight">Log in</h1>
+      <h1 className="text-4xl font-extrabold tracking-tight">Log in</h1>
       <p className="mt-3 text-sm leading-6 text-muted">
-        This form does not contact a server. Pick a role to open the matching prototype desk.
+        Sign in with the email and password stored in Supabase. The role comes from that account.
       </p>
       <form className="mt-8 space-y-4" onSubmit={submit} noValidate>
         <Field label="Email" htmlFor="email" error={errors.email}>
@@ -59,7 +68,7 @@ export function LoginForm() {
             onChange={(event) => setEmail(event.target.value)}
           />
         </Field>
-        <Field label="Password" htmlFor="password" error={errors.password} hint="Checked for length only.">
+        <Field label="Password" htmlFor="password" error={errors.password}>
           <div className="relative">
             <TextInput
               id="password"
@@ -101,13 +110,13 @@ export function LoginForm() {
       <div className="mt-8 rounded-3xl border border-line bg-card p-4">
         <p className="text-sm font-semibold">Sample profiles</p>
         <div className="mt-3 grid gap-2">
-          <Button variant="ghost" onClick={() => enterDemo("donor", "Ananya Iyer", "ananya.iyer@example.com")}>
+          <Button variant="ghost" onClick={enterDemo}>
             Continue as Ananya, donor
           </Button>
-          <Button variant="ghost" onClick={() => enterDemo("recycler", "Priya Nair", "priya.nair@greencircuit.example")}>
+          <Button variant="ghost" onClick={enterDemo}>
             Continue as Priya, recycler
           </Button>
-          <Button variant="ghost" onClick={() => enterDemo("admin", "Leela Thomas", "leela.thomas@scrapo.example")}>
+          <Button variant="ghost" onClick={enterDemo}>
             Continue as Leela, admin
           </Button>
         </div>
@@ -124,14 +133,28 @@ export function SignupForm() {
   const [role, setRole] = useState<Role>("donor");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const next: Record<string, string> = {};
     if (name.trim().length < 2) next.name = "Add the name you want on the board.";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) next.email = "Enter an email address.";
     if (password.length < 8) next.password = "Use at least 8 characters.";
+    if (role === "admin") next.role = "Admin accounts cannot be created from this form.";
     setErrors(next);
     if (Object.keys(next).length) return;
+    const supabase = createClient();
+    const { error } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/verify-email?status=verified`,
+        data: { full_name: name.trim(), role },
+      },
+    });
+    if (error) {
+      setErrors({ email: error.message });
+      return;
+    }
     const params = new URLSearchParams({
       status: "sent",
       name: name.trim(),
@@ -143,7 +166,7 @@ export function SignupForm() {
 
   return (
     <div>
-      <h1 className="text-4xl font-medium tracking-tight">Create an account</h1>
+      <h1 className="text-4xl font-extrabold tracking-tight">Create an account</h1>
       <p className="mt-3 text-sm leading-6 text-muted">
         Admin access is a preview on the login screen. Recycler accounts in the real product would wait for license review.
       </p>
@@ -195,10 +218,18 @@ export function ForgotPasswordForm() {
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setError("Enter the email you would use for Scrapo.");
+      return;
+    }
+    const supabase = createClient();
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/login`,
+    });
+    if (resetError) {
+      setError(resetError.message);
       return;
     }
     setError("");
@@ -208,9 +239,9 @@ export function ForgotPasswordForm() {
   if (sent) {
     return (
       <div>
-        <h1 className="text-4xl font-medium tracking-tight">Check your inbox</h1>
+        <h1 className="text-4xl font-extrabold tracking-tight">Check your inbox</h1>
         <p className="mt-3 text-sm leading-6 text-muted">
-          In the live product, a reset link would go to <span className="font-semibold text-ink">{email}</span>. This prototype does not send email.
+          A reset link was sent to <span className="font-semibold text-ink">{email}</span>. Open that email to choose a new password.
         </p>
         <Button href="/login" className="mt-8" variant="olive">
           Back to log in
@@ -221,9 +252,9 @@ export function ForgotPasswordForm() {
 
   return (
     <div>
-      <h1 className="text-4xl font-medium tracking-tight">Forgot password</h1>
+      <h1 className="text-4xl font-extrabold tracking-tight">Forgot password</h1>
       <p className="mt-3 text-sm leading-6 text-muted">
-        Tell us which email to use. No message leaves this browser.
+        Tell us which email to use. Supabase sends the reset link.
       </p>
       <form className="mt-8 space-y-4" onSubmit={submit} noValidate>
         <Field label="Email" htmlFor="reset-email" error={error}>

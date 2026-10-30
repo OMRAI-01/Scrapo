@@ -18,12 +18,12 @@ export function SiteHeader() {
   const [open, setOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-line/80 bg-background/85 backdrop-blur-md">
+    <header className="sticky top-0 z-40 border-b border-line bg-background">
       <Container className="flex h-16 items-center justify-between gap-4">
         <Logo />
-        <nav className="hidden items-center gap-6 text-sm font-semibold text-ink lg:flex" aria-label="Primary">
+        <nav className="hidden items-center gap-6 text-sm font-semibold text-muted lg:flex" aria-label="Primary">
           {links.map((link) => (
-            <Link key={link.href} href={link.href} className="hover:text-olive">
+            <Link key={link.href} href={link.href} className="hover:text-lime">
               {link.label}
             </Link>
           ))}

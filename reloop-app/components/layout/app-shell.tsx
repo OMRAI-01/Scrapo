@@ -69,7 +69,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             onClick={() => setOpen(false)}
             className={cx(
               "rounded-2xl px-3 py-2.5 text-sm font-semibold",
-              active ? "bg-lime text-ink" : "text-ink hover:bg-paper",
+              active ? "bg-lime text-on-accent" : "text-muted hover:bg-paper hover:text-ink",
             )}
           >
             {item.label}
@@ -81,7 +81,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[17rem_1fr]">
-      <aside className="sticky top-0 hidden h-screen flex-col border-r border-line bg-card/80 px-4 py-5 lg:flex">
+      <aside className="sticky top-0 hidden h-screen flex-col border-r border-line bg-sidebar px-4 py-5 lg:flex">
         <Logo />
         <p className="mt-6 px-3 text-xs font-semibold tracking-wide text-olive">Workspace</p>
         <div className="mt-2">{nav}</div>
@@ -98,7 +98,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="min-w-0">
-        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-line/80 bg-background/90 px-4 py-3 backdrop-blur-md sm:px-6">
+        <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-line bg-background px-4 py-3 sm:px-6">
           <button
             type="button"
             className="grid h-10 w-10 place-items-center rounded-full border border-line bg-card lg:hidden"
@@ -137,8 +137,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {open ? (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <button type="button" className="absolute inset-0 bg-olive-deep/40" aria-label="Close menu" onClick={() => setOpen(false)} />
-          <div id="workspace-nav" role="dialog" aria-modal="true" aria-label="Workspace menu" className="absolute inset-y-0 left-0 flex w-[min(100%,20rem)] flex-col bg-card p-4">
+          <button type="button" className="absolute inset-0 bg-black/70" aria-label="Close menu" onClick={() => setOpen(false)} />
+          <div id="workspace-nav" role="dialog" aria-modal="true" aria-label="Workspace menu" className="absolute inset-y-0 left-0 flex w-[min(100%,20rem)] flex-col bg-sidebar p-4">
             <div className="mb-4 flex items-center justify-between">
               <Logo />
               <button type="button" className="text-sm font-semibold" onClick={() => setOpen(false)}>

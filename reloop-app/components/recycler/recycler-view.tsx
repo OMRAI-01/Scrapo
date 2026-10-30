@@ -4,15 +4,14 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { TextArea } from "@/components/ui/field";
-import { DemoBanner, EmptyState, PageSkeleton, Pill } from "@/components/ui/feedback";
+import { EmptyState, ErrorState, PageSkeleton, Pill } from "@/components/ui/feedback";
 import { formatDate, statusLabel, workingLabel } from "@/lib/format";
-import { pickups } from "@/lib/mock/data";
 import type { InspectionNote } from "@/lib/prototype/model";
 import { usePrototype } from "@/lib/prototype/session";
-import { useDemoResource } from "@/lib/prototype/use-demo-resource";
+import { createClient } from "@/lib/supabase/client";
+import { loadPickups, saveInspectionEvent } from "@/lib/supabase/records";
+import { useLive } from "@/lib/supabase/use-live";
 import type { PickupRecord, WorkingStatus } from "@/lib/types";
-
-const assigned = pickups.filter((pickup) => pickup.recycler.name === "GreenCircuit Collective");
 
 function InspectionForm({
   pickup,
@@ -50,7 +49,7 @@ function InspectionForm({
               key={item}
               type="button"
               aria-pressed={working === item}
-              className={working === item ? "rounded-full bg-lime px-3 py-1.5 text-xs font-semibold" : "rounded-full border border-line px-3 py-1.5 text-xs font-semibold"}
+              className={working === item ? "rounded-full bg-lime px-3 py-1.5 text-xs font-semibold text-on-accent" : "rounded-full border border-line px-3 py-1.5 text-xs font-semibold"}
               onClick={() => setWorking(item)}
             >
               {workingLabel[item]}
@@ -73,9 +72,14 @@ function InspectionForm({
       <Button
         className="mt-5"
         variant="olive"
-        onClick={() => {
-          onSave({ notes: notes.trim(), donationReady, working });
-          setSavedMessage("Saved in this browser. The pickup status in the sample did not change.");
+        onClick={async () => {
+          try {
+            await saveInspectionEvent(createClient(), pickup.id, notes.trim() || "Inspection saved.");
+            onSave({ notes: notes.trim(), donationReady, working });
+            setSavedMessage("Inspection saved.");
+          } catch (error) {
+            setSavedMessage(error instanceof Error ? error.message : "The inspection was not saved.");
+          }
         }}
       >
         Save inspection
@@ -86,10 +90,21 @@ function InspectionForm({
 }
 
 export function RecyclerView() {
-  const { ready, inspections, saveInspection } = usePrototype();
-  const demo = useDemoResource("recycler");
+  const { inspections, saveInspection } = usePrototype();
+  const live = useLive("recycler", async () => {
+    const supabase = createClient();
+    const pickups = await loadPickups(supabase);
+    const { data: auth } = await supabase.auth.getUser();
+    let org = "Recycler desk";
+    if (auth.user) {
+      const { data } = await supabase.from("recycler_profiles").select("org_name").eq("profile_id", auth.user.id).maybeSingle();
+      if (data?.org_name) org = data.org_name;
+    }
+    return { org, pickups };
+  });
+  const assigned = live.data?.pickups ?? [];
   const [filter, setFilter] = useState<"open" | "closed">("open");
-  const [activeId, setActiveId] = useState(assigned[0]?.id ?? "");
+  const [activeId, setActiveId] = useState("");
 
   const visible = assigned.filter((pickup) =>
     filter === "open"
@@ -98,29 +113,29 @@ export function RecyclerView() {
   );
   const active = visible.find((pickup) => pickup.id === activeId) ?? visible[0];
 
-  if (!ready || demo.phase === "loading") return <PageSkeleton cards={2} />;
+  if (live.phase === "loading") return <PageSkeleton cards={2} />;
+  if (live.phase === "error") return <ErrorState title="Assigned pickups did not load" text={live.message} onRetry={live.retry} />;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div>
         <p className="text-sm font-semibold text-olive">Recycler desk</p>
-        <h1 className="mt-1 text-3xl font-medium tracking-tight sm:text-4xl">GreenCircuit Collective</h1>
+        <h1 className="mt-1 text-3xl font-extrabold tracking-tight sm:text-4xl">{live.data?.org ?? "Recycler desk"}</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted">
-          Assigned pickups, an inspection note, and whether a device can be offered to a student. Notes stay in this browser.
+          Pickups assigned to your recycler account. Saving an inspection writes a pickup event.
         </p>
       </div>
-      <DemoBanner />
       <div className="flex gap-2" role="group" aria-label="Pickup queue">
-        <button type="button" aria-pressed={filter === "open"} className={filter === "open" ? "rounded-full bg-olive px-3 py-1.5 text-xs font-semibold text-paper" : "rounded-full border border-line bg-card px-3 py-1.5 text-xs font-semibold"} onClick={() => setFilter("open")}>
+        <button type="button" aria-pressed={filter === "open"} className={filter === "open" ? "rounded-full bg-olive px-3 py-1.5 text-xs font-semibold text-on-accent" : "rounded-full border border-line bg-card px-3 py-1.5 text-xs font-semibold"} onClick={() => setFilter("open")}>
           Open
         </button>
-        <button type="button" aria-pressed={filter === "closed"} className={filter === "closed" ? "rounded-full bg-olive px-3 py-1.5 text-xs font-semibold text-paper" : "rounded-full border border-line bg-card px-3 py-1.5 text-xs font-semibold"} onClick={() => setFilter("closed")}>
+        <button type="button" aria-pressed={filter === "closed"} className={filter === "closed" ? "rounded-full bg-olive px-3 py-1.5 text-xs font-semibold text-on-accent" : "rounded-full border border-line bg-card px-3 py-1.5 text-xs font-semibold"} onClick={() => setFilter("closed")}>
           Closed
         </button>
       </div>
 
       {visible.length === 0 ? (
-        <EmptyState title="No pickups in this queue" text="Open still has the MacBook and the headphones. Closed has the donated Latitude." />
+        <EmptyState title="No pickups in this queue" text="Assigned collections show up here after a pickup is linked to your recycler account." />
       ) : (
         <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
           <ul className="space-y-3">
