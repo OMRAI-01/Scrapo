@@ -1,0 +1,53 @@
+import Link from "next/link";
+import { Logo } from "@/components/brand/logo";
+import { Container } from "@/components/ui/card";
+
+const explore = [
+  { href: "/dashboard", label: "Donor dashboard" },
+  { href: "/devices/new", label: "List a device" },
+  { href: "/pickups", label: "Pickup tracking" },
+  { href: "/marketplace", label: "Student marketplace" },
+  { href: "/rewards", label: "Rewards" },
+  { href: "/recycler", label: "Recycler desk" },
+  { href: "/admin", label: "Admin desk" },
+];
+
+export function SiteFooter() {
+  return (
+    <footer className="mt-20 bg-olive-deep text-paper">
+      <Container className="grid gap-10 py-14 md:grid-cols-[1.4fr_1fr_1fr]">
+        <div>
+          <Logo tone="lime" />
+          <p className="mt-4 max-w-sm text-sm leading-6 text-paper/80">
+            Give electronics a second life. Scrapo is a prototype for collection, refurbishment, student donation, and rewards.
+          </p>
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold tracking-wide text-lime">On this page</h2>
+          <ul className="mt-4 space-y-2 text-sm">
+            <li><Link href="/#how" className="hover:text-lime">How it works</Link></li>
+            <li><Link href="/#impact" className="hover:text-lime">Why it matters</Link></li>
+            <li><Link href="/#donate" className="hover:text-lime">Device donation</Link></li>
+            <li><Link href="/#students" className="hover:text-lime">Students</Link></li>
+            <li><Link href="/#rewards" className="hover:text-lime">Rewards</Link></li>
+          </ul>
+        </div>
+        <div>
+          <h2 className="text-sm font-semibold tracking-wide text-lime">Prototype screens</h2>
+          <ul className="mt-4 space-y-2 text-sm">
+            {explore.map((item) => (
+              <li key={item.href}>
+                <Link href={item.href} className="hover:text-lime">{item.label}</Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Container>
+      <div className="border-t border-white/10">
+        <Container className="py-5 text-xs text-paper/70">
+          Sample figures on the marketing page are published context or clearly marked prototype numbers. Scrapo does not send them to a server.
+        </Container>
+      </div>
+    </footer>
+  );
+}

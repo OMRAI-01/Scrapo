@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f3f6d8;
+  --foreground: #1c1e14;
+  --card: #fffef6;
+  --lime: #dde671;
+  --lime-deep: #c9d44a;
+  --olive: #61671b;
+  --olive-deep: #3e4212;
+  --ink: #1a1c12;
+  --muted: #4e5338;
+  --line: #d4dcb0;
+  --danger: #8e3328;
+  --paper: #f7f8e6;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-lime: var(--lime);
+  --color-lime-deep: var(--lime-deep);
+  --color-olive: var(--olive);
+  --color-olive-deep: var(--olive-deep);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-danger: var(--danger);
+  --color-paper: var(--paper);
+  --font-sans: var(--font-manrope);
+  --font-display: var(--font-unbounded);
+}
+
+body {
+  background:
+    radial-gradient(900px 420px at 110% -10%, rgb(221 230 113 / 0.9), transparent 58%),
+    radial-gradient(640px 360px at -10% 8%, rgb(97 103 27 / 0.08), transparent 60%),
+    var(--background);
+  color: var(--foreground);
+  font-family: var(--font-manrope), sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-unbounded), sans-serif;
+}
+
+::selection {
+  background: #dde671;
+  color: #1a1c12;
+}
+
+:focus-visible {
+  outline: 2px solid #3e4212;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .float-slow {
+    animation: reloop-float 7s ease-in-out infinite;
+  }
+
+  .float-delayed {
+    animation: reloop-float 8.5s ease-in-out 0.6s infinite;
+  }
+}
+
+@keyframes reloop-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}

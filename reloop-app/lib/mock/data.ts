@@ -1,0 +1,497 @@
+import type {
+  ActivityItem,
+  AdminUser,
+  AssistanceRequest,
+  DemoProfile,
+  DonationApproval,
+  EcoLevel,
+  LeaderboardEntry,
+  ListingRecord,
+  PickupRecord,
+  RecyclerAccount,
+  RewardEvent,
+} from "@/lib/types";
+
+export const DEMO_SOURCE = "demo" as const;
+
+export const demoProfile: DemoProfile = {
+  name: "Ananya Iyer",
+  email: "ananya.iyer@example.com",
+  role: "donor",
+  city: "Bengaluru",
+  pointsMonth: 1280,
+  pointsLifetime: 6420,
+  rank: 7,
+  personalized: false,
+};
+
+const greenCircuit = {
+  name: "GreenCircuit Collective",
+  contact: "Priya Nair",
+  phone: "+91 98450 22018",
+  license: "DEMO-RC-1842",
+};
+
+export const pickups: PickupRecord[] = [
+  {
+    id: "pk-2041",
+    deviceId: "dv-2041",
+    deviceName: "MacBook Air 2020",
+    description:
+      "Used for class notes and light browsing. Battery lasts about four hours, the charger is included, and there is a small scuff on the lid. Personal files are still on the disk and should be wiped at collection.",
+    category: "laptop",
+    address: "14, 4th Cross, Indiranagar",
+    city: "Bengaluru",
+    collectionDate: "2026-11-04",
+    status: "scheduled",
+    recycler: greenCircuit,
+    source: "demo",
+    timeline: [
+      {
+        status: "requested",
+        label: "Pickup requested",
+        at: "2026-10-28",
+        note: "Listed from the donor dashboard.",
+      },
+      {
+        status: "scheduled",
+        label: "Collection booked",
+        at: "2026-10-29",
+        note: "GreenCircuit confirmed a morning slot.",
+      },
+      {
+        status: "collected",
+        label: "Collected",
+        at: null,
+        note: "The recycler marks this after the visit.",
+      },
+      {
+        status: "inspected",
+        label: "Inspected",
+        at: null,
+        note: "Condition, power, and data-wipe check.",
+      },
+      {
+        status: "processing",
+        label: "Refurbishing",
+        at: null,
+        note: "Cleaned and prepared for a student, or sent to parts recovery.",
+      },
+      {
+        status: "donated",
+        label: "Offered to a student",
+        at: null,
+        note: "Visible on the student marketplace once approved.",
+      },
+    ],
+  },
+  {
+    id: "pk-2033",
+    deviceId: "dv-2033",
+    deviceName: "Sony WH-CH520",
+    description:
+      "Wireless headphones that still pair and play. The left ear cushion is worn, the cable is missing, and they shut off after a few hours. Fine for parts or a student who can replace the pads.",
+    category: "accessory",
+    address: "14, 4th Cross, Indiranagar",
+    city: "Bengaluru",
+    collectionDate: "2026-10-22",
+    status: "processing",
+    recycler: greenCircuit,
+    source: "demo",
+    timeline: [
+      {
+        status: "requested",
+        label: "Pickup requested",
+        at: "2026-10-18",
+        note: "Added with a laptop pickup.",
+      },
+      {
+        status: "scheduled",
+        label: "Collection booked",
+        at: "2026-10-19",
+        note: "Same visit as the ThinkPad.",
+      },
+      {
+        status: "collected",
+        label: "Collected",
+        at: "2026-10-22",
+        note: "Received at the Indiranagar hub.",
+      },
+      {
+        status: "inspected",
+        label: "Inspected",
+        at: "2026-10-23",
+        note: "Both earcups work. Cable is frayed.",
+      },
+      {
+        status: "processing",
+        label: "Refurbishing",
+        at: "2026-10-26",
+        note: "Replacement cable fitted. Awaiting a wipe of paired devices.",
+      },
+      {
+        status: "donated",
+        label: "Offered to a student",
+        at: null,
+        note: "Not on the marketplace yet.",
+      },
+    ],
+  },
+  {
+    id: "pk-1988",
+    deviceId: "dv-1988",
+    deviceName: "Dell Latitude 5420",
+    description:
+      "Office laptop, about five years old, powers on and runs. The keyboard has shine on the keys, the charger is included, and it was used for documents rather than games.",
+    category: "laptop",
+    address: "14, 4th Cross, Indiranagar",
+    city: "Bengaluru",
+    collectionDate: "2026-09-12",
+    status: "donated",
+    recycler: greenCircuit,
+    source: "demo",
+    timeline: [
+      {
+        status: "requested",
+        label: "Pickup requested",
+        at: "2026-09-08",
+        note: "Office refresh, one of four laptops.",
+      },
+      {
+        status: "scheduled",
+        label: "Collection booked",
+        at: "2026-09-09",
+        note: "Weekday afternoon slot.",
+      },
+      {
+        status: "collected",
+        label: "Collected",
+        at: "2026-09-12",
+        note: "Charger included.",
+      },
+      {
+        status: "inspected",
+        label: "Inspected",
+        at: "2026-09-14",
+        note: "Battery holds a charge. Keyboard is intact.",
+      },
+      {
+        status: "processing",
+        label: "Refurbishing",
+        at: "2026-09-18",
+        note: "Drive wiped and a fresh study image installed.",
+      },
+      {
+        status: "donated",
+        label: "Donated",
+        at: "2026-10-02",
+        note: "Matched with a Class 11 request at Christ Junior College.",
+      },
+    ],
+  },
+];
+
+export const listings: ListingRecord[] = [
+  {
+    id: "ls-11",
+    title: "Dell Latitude 5420",
+    category: "laptop",
+    condition: "good",
+    studentPrice: null,
+    donation: "available",
+    campus: "Christ Junior College",
+    note: "14-inch, charger included, drive wiped. Held for a student who needs it for exams.",
+  },
+  {
+    id: "ls-12",
+    title: "iPad 8th generation",
+    category: "tablet",
+    condition: "excellent",
+    studentPrice: 6500,
+    donation: "available",
+    campus: "RV College of Engineering",
+    note: "Screen is clear. Stylus is not included. Available to buy at a student price or request as aid.",
+  },
+  {
+    id: "ls-13",
+    title: "Redmi Note 11",
+    category: "phone",
+    condition: "fair",
+    studentPrice: null,
+    donation: "reserved",
+    campus: "Mount Carmel College",
+    note: "Reserved for an assistance request. Battery was replaced during refurbishment.",
+  },
+  {
+    id: "ls-14",
+    title: "Lenovo ThinkVision 24",
+    category: "monitor",
+    condition: "good",
+    studentPrice: 2800,
+    donation: "available",
+    campus: "Any Bengaluru campus",
+    note: "HDMI cable included. Stand is scuffed, panel is even.",
+  },
+  {
+    id: "ls-15",
+    title: "HP Pavilion 15",
+    category: "laptop",
+    condition: "good",
+    studentPrice: null,
+    donation: "donated",
+    campus: "National Public School, Indiranagar",
+    note: "Handed to a first-year student in September. Shown here so donation history stays visible.",
+  },
+];
+
+export const assistanceRequests: AssistanceRequest[] = [
+  {
+    id: "ar-4",
+    student: "Sana Qureshi",
+    campus: "Christ Junior College",
+    need: "A laptop for board-exam prep",
+    category: "laptop",
+    status: "matched",
+    note: "Matched to the Latitude. Waiting on donation approval.",
+  },
+  {
+    id: "ar-5",
+    student: "Arjun Deshpande",
+    campus: "BMS College of Engineering",
+    need: "A phone for internship calls",
+    category: "phone",
+    status: "open",
+    note: "No reserved device yet.",
+  },
+  {
+    id: "ar-6",
+    student: "Meher Krishnan",
+    campus: "National Public School, Indiranagar",
+    need: "A laptop for the school year",
+    category: "laptop",
+    status: "fulfilled",
+    note: "Received the Pavilion in September.",
+  },
+];
+
+export const leaderboard: LeaderboardEntry[] = [
+  { rank: 1, name: "Meera Shah", city: "Pune", points: 2140 },
+  { rank: 2, name: "Kabir Menon", city: "Kochi", points: 1985 },
+  { rank: 3, name: "Ishaan Rao", city: "Hyderabad", points: 1760 },
+  { rank: 4, name: "Tara Bhattacharya", city: "Kolkata", points: 1620 },
+  { rank: 5, name: "Dev Patel", city: "Ahmedabad", points: 1490 },
+  { rank: 6, name: "Nyla Fernandes", city: "Goa", points: 1360 },
+  {
+    rank: 7,
+    name: "Ananya Iyer",
+    city: "Bengaluru",
+    points: 1280,
+    highlight: true,
+  },
+  { rank: 8, name: "Rohit Banerjee", city: "Jaipur", points: 1210 },
+  { rank: 9, name: "Sara Krishnamurthy", city: "Chennai", points: 1145 },
+  { rank: 10, name: "Vikram Sethi", city: "Delhi", points: 1090 },
+];
+
+export const ecoLevels: EcoLevel[] = [
+  { name: "Seed", from: 0, summary: "First device listed." },
+  { name: "Sprout", from: 500, summary: "A pickup completed." },
+  { name: "Canopy", from: 2000, summary: "A habit, not a one-off." },
+  { name: "Grove", from: 5000, summary: "Several devices kept in use." },
+  { name: "Old Growth", from: 10000, summary: "A year of steady returns." },
+];
+
+export const rewardHistory: RewardEvent[] = [
+  {
+    id: "rw-1",
+    label: "Dell Latitude donated to a student",
+    points: 420,
+    at: "2026-10-02",
+    source: "demo",
+  },
+  {
+    id: "rw-2",
+    label: "Sony headphones collected",
+    points: 60,
+    at: "2026-10-22",
+    source: "demo",
+  },
+  {
+    id: "rw-3",
+    label: "MacBook Air listed",
+    points: 180,
+    at: "2026-10-28",
+    source: "demo",
+  },
+  {
+    id: "rw-4",
+    label: "October streak — three handovers",
+    points: 120,
+    at: "2026-10-29",
+    source: "demo",
+  },
+];
+
+export const activity: ActivityItem[] = [
+  {
+    id: "ac-1",
+    kind: "pickup",
+    title: "MacBook Air pickup booked",
+    detail: "GreenCircuit · 4 Nov, morning",
+    at: "2026-10-29",
+  },
+  {
+    id: "ac-2",
+    kind: "reward",
+    title: "180 points for listing the MacBook",
+    detail: "Points land when a recycler accepts the listing.",
+    at: "2026-10-28",
+  },
+  {
+    id: "ac-3",
+    kind: "pickup",
+    title: "Headphones moved to refurbishing",
+    detail: "Cable replaced. Still at the hub.",
+    at: "2026-10-26",
+  },
+  {
+    id: "ac-4",
+    kind: "donation",
+    title: "Latitude handed to Sana Qureshi",
+    detail: "Christ Junior College · board exams",
+    at: "2026-10-02",
+  },
+];
+
+export const adminUsers: AdminUser[] = [
+  {
+    id: "us-1",
+    name: "Ananya Iyer",
+    email: "ananya.iyer@example.com",
+    role: "donor",
+    city: "Bengaluru",
+    points: 6420,
+  },
+  {
+    id: "us-2",
+    name: "Sana Qureshi",
+    email: "sana.qureshi@example.com",
+    role: "student",
+    city: "Bengaluru",
+    points: 80,
+  },
+  {
+    id: "us-3",
+    name: "Priya Nair",
+    email: "priya.nair@greencircuit.example",
+    role: "recycler",
+    city: "Bengaluru",
+    points: 0,
+  },
+  {
+    id: "us-4",
+    name: "Kabir Menon",
+    email: "kabir.menon@example.com",
+    role: "donor",
+    city: "Kochi",
+    points: 9100,
+  },
+  {
+    id: "us-5",
+    name: "Arjun Deshpande",
+    email: "arjun.deshpande@example.com",
+    role: "student",
+    city: "Bengaluru",
+    points: 20,
+  },
+  {
+    id: "us-6",
+    name: "Leela Thomas",
+    email: "leela.thomas@scrapo.example",
+    role: "admin",
+    city: "Bengaluru",
+    points: 0,
+  },
+];
+
+export const recyclers: RecyclerAccount[] = [
+  {
+    id: "rc-1",
+    name: "GreenCircuit Collective",
+    city: "Bengaluru",
+    license: "DEMO-RC-1842",
+    status: "verified",
+  },
+  {
+    id: "rc-2",
+    name: "Harbour Metals",
+    city: "Chennai",
+    license: "DEMO-RC-2201",
+    status: "pending",
+  },
+  {
+    id: "rc-3",
+    name: "Second Circuit",
+    city: "Pune",
+    license: "DEMO-RC-0774",
+    status: "needs_info",
+  },
+  {
+    id: "rc-4",
+    name: "Malabar Reclaim",
+    city: "Kochi",
+    license: "DEMO-RC-3108",
+    status: "verified",
+  },
+];
+
+export const donationQueue: DonationApproval[] = [
+  {
+    id: "dn-1",
+    device: "Dell Latitude 5420",
+    student: "Sana Qureshi",
+    campus: "Christ Junior College",
+    status: "pending",
+  },
+  {
+    id: "dn-2",
+    device: "Redmi Note 11",
+    student: "Arjun Deshpande",
+    campus: "BMS College of Engineering",
+    status: "pending",
+  },
+  {
+    id: "dn-3",
+    device: "HP Pavilion 15",
+    student: "Meher Krishnan",
+    campus: "National Public School, Indiranagar",
+    status: "approved",
+  },
+];
+
+export const donatedDevices = [
+  { name: "Dell Latitude 5420", value: 7400 },
+  { name: "HP Pavilion 15", value: 6200 },
+  { name: "iPhone 11", value: 2800 },
+  { name: "Kindle Paperwhite", value: 1100 },
+  { name: "Logitech mouse", value: 350 },
+  { name: "JBL speaker", value: 600 },
+];
+
+export const dashboardSummary = {
+  donatedCount: donatedDevices.length,
+  estimatedValue: donatedDevices.reduce((sum, device) => sum + device.value, 0),
+};
+
+export const impactSnapshot = {
+  devicesThisMonth: 46,
+  kilogramsDiverted: 128,
+  studentsMatched: 19,
+  pointsIssued: 18420,
+  byCity: [
+    { city: "Bengaluru", devices: 18 },
+    { city: "Pune", devices: 11 },
+    { city: "Kochi", devices: 9 },
+    { city: "Chennai", devices: 8 },
+  ],
+};
