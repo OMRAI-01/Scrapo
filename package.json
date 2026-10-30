@@ -1,0 +1,10 @@
+{
+  "name": "scrapo-web",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix reloop-app",
+    "build": "npm run build --prefix reloop-app",
+    "start": "npm run start --prefix reloop-app",
+    "lint": "npm run lint --prefix reloop-app"
+  }
+}
