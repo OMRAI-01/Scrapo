@@ -181,6 +181,34 @@ export type Database = {
         recorded_by: string;
         created_at: string;
       }>;
+      device_sanitisation_records: Table<{
+        id: string;
+        device_id: string;
+        pickup_id: string;
+        status: "pending" | "in_progress" | "completed" | "failed";
+        method: string;
+        technician_id: string | null;
+        organization_id: string | null;
+        completed_at: string | null;
+        verification_evidence: string;
+        verification_status: "pending_review" | "verified" | "rejected";
+        verified_by: string | null;
+        verified_at: string | null;
+        notes: string;
+        created_at: string;
+      }>;
+      device_custody_history: Table<{
+        id: string;
+        device_id: string;
+        pickup_id: string;
+        stage: string;
+        action: string;
+        responsible_user_id: string;
+        responsible_role: string;
+        responsible_org: string | null;
+        notes: string;
+        happened_at: string;
+      }>;
     };
     Views: {
       leaderboard: {

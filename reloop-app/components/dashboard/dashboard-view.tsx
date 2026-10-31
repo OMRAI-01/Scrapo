@@ -10,6 +10,8 @@ import { createClient } from "@/lib/supabase/client";
 import { loadDashboard } from "@/lib/supabase/records";
 import { useLive } from "@/lib/supabase/use-live";
 import type { ActivityItem } from "@/lib/types";
+import { DonorTrackerCard } from "@/components/tracker/donor-tracker-card";
+import { pickups } from "@/lib/mock/data";
 
 const filters: Array<{ id: "all" | ActivityItem["kind"] | "archive"; label: string }> = [
   { id: "all", label: "All" },
@@ -24,6 +26,8 @@ export function DashboardView() {
   const live = useLive("dashboard", () => loadDashboard(createClient()));
   const [filter, setFilter] = useState<(typeof filters)[number]["id"]>("all");
   const activity = live.data?.activity;
+  const { drafts } = usePrototype();
+  const donorPickups = useMemo(() => [...drafts, ...pickups], [drafts]);
 
   const items = useMemo(() => {
     const rows = activity ?? [];
@@ -78,6 +82,9 @@ export function DashboardView() {
           </Card>
         ))}
       </section>
+
+      {/* Scrapo AI Tracker: Donated Devices Live Journey */}
+      <DonorTrackerCard pickups={donorPickups} />
 
       <section>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">

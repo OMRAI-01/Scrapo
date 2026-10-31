@@ -5,23 +5,27 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, TextInput } from "@/components/ui/field";
 import { EmptyState, ErrorState, PageSkeleton, Pill } from "@/components/ui/feedback";
-import { formatNumber, roleLabel } from "@/lib/format";
+import { formatDate, formatNumber, roleLabel } from "@/lib/format";
 import { usePrototype } from "@/lib/prototype/session";
 import { createClient } from "@/lib/supabase/client";
-import { finalizeMonthlyWinners, loadAdmin, updateListingStatus, updateRecyclerStatus } from "@/lib/supabase/records";
+import { finalizeMonthlyWinners, loadAdmin, updateListingStatus, updateRecyclerStatus, verifySanitisationRecord } from "@/lib/supabase/records";
 import { useLive } from "@/lib/supabase/use-live";
+import { initialSanitisationRecords, pickups } from "@/lib/mock/data";
+import { AdminTrackerOverview } from "@/components/tracker/admin-tracker-overview";
 
 export function AdminView() {
   const live = useLive("admin", () => loadAdmin(createClient()));
-  const { admin, toggleSuspended } = usePrototype();
+  const { admin, toggleSuspended, profile, setRecyclerStatus, sanitisations, verifySanitisation } = usePrototype();
   const [userQuery, setUserQuery] = useState("");
+  const [recyclerFilter, setRecyclerFilter] = useState<"all" | "pending" | "verified">("all");
   const [rewardName, setRewardName] = useState("");
   const [rewardPoints, setRewardPoints] = useState("50");
   const [rewardLabel, setRewardLabel] = useState("Manual adjustment");
   const [rewardError, setRewardError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [auditMessage, setAuditMessage] = useState("");
   const directory = live.data?.users;
-  const recyclers = live.data?.recyclers ?? [];
+  const recyclers = useMemo(() => live.data?.recyclers ?? [], [live.data?.recyclers]);
   const donationQueue = live.data?.donations ?? [];
   const leaderboard = live.data?.board ?? [];
   const impact = live.data?.impact ?? { devices: 0, students: 0, points: 0, byCity: [] as { city: string; devices: number }[] };
@@ -32,6 +36,19 @@ export function AdminView() {
       `${user.name} ${user.role} ${user.city}`.toLowerCase().includes(needle),
     );
   }, [directory, userQuery]);
+
+  const filteredRecyclers = useMemo(() => {
+    return recyclers.filter((recycler) => {
+      const status = admin.recyclerStatus[recycler.id] ?? recycler.status;
+      if (recyclerFilter === "verified") return status === "verified";
+      if (recyclerFilter === "pending") return status === "pending" || status === "needs_info";
+      return true;
+    });
+  }, [admin.recyclerStatus, recyclerFilter, recyclers]);
+
+  const allSanitisations = useMemo(() => {
+    return Object.values({ ...initialSanitisationRecords, ...sanitisations });
+  }, [sanitisations]);
 
   const maxCity = Math.max(1, ...impact.byCity.map((row) => row.devices));
 
@@ -48,6 +65,9 @@ export function AdminView() {
           {actionError ? ` ${actionError}` : ""}
         </p>
       </div>
+
+      {/* Scrapo AI Tracker: Admin Operations & Delay Monitoring */}
+      <AdminTrackerOverview pickups={pickups} />
 
       <section id="users" className="scroll-mt-24 space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -86,21 +106,209 @@ export function AdminView() {
       </section>
 
       <section id="recyclers" className="scroll-mt-24 space-y-4">
-        <h2 className="text-2xl font-medium">Recycler verification</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-2xl font-medium">Recycler verification</h2>
+            <p className="text-xs text-muted">
+              Only authorised administrators can review compliance and grant verified partner status.
+            </p>
+          </div>
+          <div className="flex gap-2" role="group" aria-label="Filter recyclers">
+            <button
+              type="button"
+              className={recyclerFilter === "all" ? "rounded-full bg-olive px-3 py-1.5 text-xs font-semibold text-on-accent" : "rounded-full border border-line bg-card px-3 py-1.5 text-xs font-semibold"}
+              onClick={() => setRecyclerFilter("all")}
+            >
+              All ({recyclers.length})
+            </button>
+            <button
+              type="button"
+              className={recyclerFilter === "pending" ? "rounded-full bg-olive px-3 py-1.5 text-xs font-semibold text-on-accent" : "rounded-full border border-line bg-card px-3 py-1.5 text-xs font-semibold"}
+              onClick={() => setRecyclerFilter("pending")}
+            >
+              Pending / Info
+            </button>
+            <button
+              type="button"
+              className={recyclerFilter === "verified" ? "rounded-full bg-olive px-3 py-1.5 text-xs font-semibold text-on-accent" : "rounded-full border border-line bg-card px-3 py-1.5 text-xs font-semibold"}
+              onClick={() => setRecyclerFilter("verified")}
+            >
+              Verified
+            </button>
+          </div>
+        </div>
+
+        {filteredRecyclers.length === 0 ? (
+          <EmptyState title="No recyclers in this filter" text="Try selecting a different filter option." />
+        ) : (
+          <ul className="space-y-3">
+            {filteredRecyclers.map((recycler) => {
+              const status = admin.recyclerStatus[recycler.id] ?? recycler.status;
+              const isVerified = status === "verified";
+              return (
+                <li key={recycler.id}>
+                  <Card className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-base font-semibold">{recycler.name}</h3>
+                        <Pill tone={isVerified ? "lime" : status === "pending" ? "paper" : "danger"}>
+                          {isVerified ? "✓ Verified Partner" : status.replace("_", " ")}
+                        </Pill>
+                      </div>
+                      <p className="mt-1 text-sm text-muted">{recycler.city} · License {recycler.license}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="olive"
+                        onClick={() => {
+                          if (profile.role !== "admin") {
+                            setActionError("Only administrators can mark recyclers verified.");
+                            return;
+                          }
+                          try {
+                            setRecyclerStatus(recycler.id, "verified");
+                            updateRecyclerStatus(createClient(), recycler.id, "verified")
+                              .then(() => live.retry())
+                              .catch(() => {});
+                          } catch (err) {
+                            setActionError(err instanceof Error ? err.message : "Error verifying recycler.");
+                          }
+                        }}
+                      >
+                        Verify Partner
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          if (profile.role !== "admin") {
+                            setActionError("Only administrators can change recycler status.");
+                            return;
+                          }
+                          try {
+                            setRecyclerStatus(recycler.id, "needs_info");
+                            updateRecyclerStatus(createClient(), recycler.id, "needs_info")
+                              .then(() => live.retry())
+                              .catch(() => {});
+                          } catch (err) {
+                            setActionError(err instanceof Error ? err.message : "Error updating recycler.");
+                          }
+                        }}
+                      >
+                        Ask for info
+                      </Button>
+                    </div>
+                  </Card>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      {/* Scrapo TrustShield: Data Sanitisation Verification Queue */}
+      <section id="trustshield" className="scroll-mt-24 space-y-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-medium">TrustShield Sanitisation Audit</h2>
+            <Pill tone="paper">Admin Review Desk</Pill>
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            Strict verification queue: Inspect erasure logs and cryptographic evidence before issuing TrustShield certificates. Never claim successful erasure without verified evidence.
+          </p>
+        </div>
+
+        {auditMessage && <p className="text-xs font-semibold text-olive">{auditMessage}</p>}
+
         <ul className="space-y-3">
-          {recyclers.map((recycler) => {
-            const status = admin.recyclerStatus[recycler.id] ?? recycler.status;
+          {allSanitisations.map((san) => {
+            const isVerified = san.verificationStatus === "verified";
+            const isCompleted = san.status === "completed";
+            const isFailed = san.status === "failed";
             return (
-              <li key={recycler.id}>
-                <Card className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div>
-                    <h3 className="text-base font-semibold">{recycler.name}</h3>
-                    <p className="text-sm text-muted">{recycler.city} · License {recycler.license}</p>
-                    <div className="mt-2"><Pill tone={status === "verified" ? "lime" : status === "pending" ? "paper" : "danger"}>{status.replace("_", " ")}</Pill></div>
+              <li key={san.id}>
+                <Card className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-semibold">Device {san.deviceId}</h3>
+                      <Pill tone={isCompleted ? "lime" : isFailed ? "danger" : "paper"}>
+                        Sanitisation: {san.status.replace("_", " ")}
+                      </Pill>
+                      <Pill tone={isVerified ? "lime" : "paper"}>
+                        Verification: {san.verificationStatus.replace("_", " ")}
+                      </Pill>
+                    </div>
+                    <p className="text-xs text-muted">
+                      Method: <strong className="text-ink">{san.method}</strong> · Recycler: <strong>{san.responsibleRecycler}</strong> ({san.technicianName})
+                    </p>
+                    <p className="text-xs font-mono text-muted">
+                      Evidence Ref: {san.verificationEvidence ? (
+                        <span className="text-ink font-semibold">{san.verificationEvidence}</span>
+                      ) : (
+                        <span className="italic text-danger">No evidence submitted</span>
+                      )}
+                    </p>
+                    {san.completedAt && (
+                      <p className="text-[11px] text-muted">
+                        Completed at: {formatDate(san.completedAt)}
+                        {san.verifiedBy ? ` · Verified by: ${san.verifiedBy}` : ""}
+                      </p>
+                    )}
                   </div>
+
                   <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="olive" onClick={() => { updateRecyclerStatus(createClient(), recycler.id, "verified").then(() => live.retry()).catch((error: unknown) => setActionError(error instanceof Error ? error.message : "Could not update the recycler.")); }}>Verify</Button>
-                    <Button size="sm" variant="ghost" onClick={() => { updateRecyclerStatus(createClient(), recycler.id, "needs_info").then(() => live.retry()).catch((error: unknown) => setActionError(error instanceof Error ? error.message : "Could not update the recycler.")); }}>Ask for info</Button>
+                    {san.verificationStatus !== "verified" ? (
+                      <Button
+                        size="sm"
+                        variant="olive"
+                        onClick={async () => {
+                          if (profile.role !== "admin") {
+                            setActionError("Only administrators can approve sanitisation records.");
+                            return;
+                          }
+                          if (!san.verificationEvidence?.trim()) {
+                            setActionError("Cannot verify without evidence reference.");
+                            return;
+                          }
+                          try {
+                            verifySanitisation(san.pickupId, "verified");
+                            await verifySanitisationRecord(createClient(), san.id, "verified").catch(() => {});
+                            setAuditMessage(`TrustShield: Device ${san.deviceId} sanitisation verified.`);
+                          } catch (err) {
+                            setActionError(err instanceof Error ? err.message : "Verification failed.");
+                          }
+                        }}
+                      >
+                        Approve Evidence
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-olive font-semibold flex items-center gap-1">
+                        ✓ Certificate Active
+                      </span>
+                    )}
+
+                    {san.verificationStatus !== "rejected" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={async () => {
+                          if (profile.role !== "admin") {
+                            setActionError("Only administrators can reject sanitisation records.");
+                            return;
+                          }
+                          try {
+                            verifySanitisation(san.pickupId, "rejected");
+                            await verifySanitisationRecord(createClient(), san.id, "rejected").catch(() => {});
+                            setAuditMessage(`TrustShield: Device ${san.deviceId} evidence rejected.`);
+                          } catch (err) {
+                            setActionError(err instanceof Error ? err.message : "Rejection failed.");
+                          }
+                        }}
+                      >
+                        Reject
+                      </Button>
+                    )}
                   </div>
                 </Card>
               </li>

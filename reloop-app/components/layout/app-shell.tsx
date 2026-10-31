@@ -23,6 +23,7 @@ const recyclerNav = [{ href: "/recycler", label: "Assigned pickups" }];
 const adminNav = [
   { href: "/admin#users", label: "Users" },
   { href: "/admin#recyclers", label: "Recyclers" },
+  { href: "/admin#trustshield", label: "TrustShield" },
   { href: "/admin#donations", label: "Donations" },
   { href: "/admin#reward-desk", label: "Rewards" },
   { href: "/admin#winners", label: "Winners" },

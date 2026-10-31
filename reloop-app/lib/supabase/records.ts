@@ -5,6 +5,7 @@ import type {
   AssistanceRequest,
   Category,
   Condition,
+  CustodyEvent,
   DemoProfile,
   LeaderboardEntry,
   ListingRecord,
@@ -12,6 +13,9 @@ import type {
   PickupStatus,
   RecyclerAccount,
   RewardEvent,
+  SanitisationRecord,
+  SanitisationStatus,
+  SanitisationVerificationStatus,
   TimelineEvent,
 } from "@/lib/types";
 import type { Database } from "@/lib/supabase/database.types";
@@ -621,4 +625,186 @@ export async function updateListingStatus(supabase: Db, id: string, status: "ava
   if (deviceUpdate.error) throw new Error(deviceUpdate.error.message);
   const pickupUpdate = await supabase.from("pickups").update({ status: "donated", status_note: "Donated" }).eq("device_id", listing.device_id);
   if (pickupUpdate.error) throw new Error(pickupUpdate.error.message);
+}
+
+export async function loadSanitisationRecord(
+  supabase: Db,
+  pickupId: string,
+): Promise<SanitisationRecord | null> {
+  const { data, error } = await supabase
+    .from("device_sanitisation_records")
+    .select("*")
+    .eq("pickup_id", pickupId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error && !/permission|jwt/i.test(error.message)) {
+    throw new Error(error.message);
+  }
+  if (!data) return null;
+
+  return {
+    id: data.id,
+    deviceId: data.device_id,
+    pickupId: data.pickup_id,
+    status: data.status as SanitisationStatus,
+    method: data.method,
+    responsibleRecycler: "Authorized Recycler Partner",
+    technicianId: data.technician_id ?? "",
+    technicianName: "Technician",
+    completedAt: data.completed_at,
+    verificationEvidence: data.verification_evidence,
+    verificationStatus: data.verification_status as SanitisationVerificationStatus,
+    verifiedBy: data.verified_by,
+    verifiedAt: data.verified_at,
+    notes: data.notes,
+  };
+}
+
+export async function submitSanitisationRecord(
+  supabase: Db,
+  input: {
+    deviceId: string;
+    pickupId: string;
+    status: SanitisationStatus;
+    method: string;
+    verificationEvidence: string;
+    notes?: string;
+  },
+) {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Sign in before submitting sanitisation records.");
+
+  if (input.status === "completed" && !input.verificationEvidence?.trim()) {
+    throw new Error("Verification evidence or log reference is required for completed sanitisation.");
+  }
+
+  const { data: member } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("profile_id", auth.user.id)
+    .maybeSingle();
+
+  const { data, error } = await supabase
+    .from("device_sanitisation_records")
+    .insert({
+      device_id: input.deviceId,
+      pickup_id: input.pickupId,
+      status: input.status,
+      method: input.method,
+      technician_id: auth.user.id,
+      organization_id: member?.organization_id ?? null,
+      completed_at: input.status === "completed" ? new Date().toISOString() : null,
+      verification_evidence: input.verificationEvidence.trim(),
+      verification_status: "pending_review",
+      notes: input.notes?.trim() || "",
+    })
+    .select("id")
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  await recordCustodyEvent(supabase, {
+    deviceId: input.deviceId,
+    pickupId: input.pickupId,
+    stage: "sanitisation",
+    action: `Data sanitisation updated to ${input.status.replace("_", " ")} via ${input.method}`,
+    notes: input.notes?.trim() || `Evidence ref: ${input.verificationEvidence.trim() || "none"}`,
+  }).catch(() => {});
+
+  return data.id;
+}
+
+export async function verifySanitisationRecord(
+  supabase: Db,
+  recordId: string,
+  status: SanitisationVerificationStatus,
+) {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Sign in before verifying records.");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", auth.user.id)
+    .maybeSingle();
+
+  if (profile?.role !== "admin") {
+    throw new Error("Only administrators can verify sanitisation records.");
+  }
+
+  const { error } = await supabase
+    .from("device_sanitisation_records")
+    .update({
+      verification_status: status,
+      verified_by: auth.user.id,
+      verified_at: new Date().toISOString(),
+    })
+    .eq("id", recordId);
+
+  if (error) throw new Error(error.message);
+}
+
+export async function loadCustodyHistory(
+  supabase: Db,
+  pickupId: string,
+): Promise<CustodyEvent[]> {
+  const { data, error } = await supabase
+    .from("device_custody_history")
+    .select("*")
+    .eq("pickup_id", pickupId)
+    .order("happened_at", { ascending: true });
+
+  if (error && !/permission|jwt/i.test(error.message)) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    pickupId: row.pickup_id,
+    deviceId: row.device_id,
+    stage: row.stage as CustodyEvent["stage"],
+    action: row.action,
+    responsibleUserId: row.responsible_user_id,
+    responsibleUserName: "Authorized Agent",
+    responsibleRole: row.responsible_role as CustodyEvent["responsibleRole"],
+    responsibleOrg: row.responsible_org ?? undefined,
+    timestamp: row.happened_at,
+    notes: row.notes,
+  }));
+}
+
+export async function recordCustodyEvent(
+  supabase: Db,
+  input: {
+    deviceId: string;
+    pickupId: string;
+    stage: CustodyEvent["stage"];
+    action: string;
+    notes: string;
+  },
+) {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Sign in before recording custody events.");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", auth.user.id)
+    .maybeSingle();
+
+  const role = profile?.role ?? "donor";
+
+  const { error } = await supabase.from("device_custody_history").insert({
+    device_id: input.deviceId,
+    pickup_id: input.pickupId,
+    stage: input.stage,
+    action: input.action,
+    responsible_user_id: auth.user.id,
+    responsible_role: role,
+    notes: input.notes,
+  });
+
+  if (error) throw new Error(error.message);
 }

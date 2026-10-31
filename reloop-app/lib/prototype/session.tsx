@@ -12,9 +12,18 @@ import {
   emptyAdmin,
   type InspectionNote,
 } from "@/lib/prototype/model";
+import { initialCustodyHistory, initialSanitisationRecords } from "@/lib/mock/data";
 import { createClient } from "@/lib/supabase/client";
 import { loadProfile } from "@/lib/supabase/records";
-import type { DemoProfile, PickupRecord, RewardEvent, Role } from "@/lib/types";
+import type {
+  CustodyEvent,
+  DemoProfile,
+  PickupRecord,
+  RewardEvent,
+  Role,
+  SanitisationRecord,
+  SanitisationVerificationStatus,
+} from "@/lib/types";
 import type { PrototypeState } from "@/lib/prototype/model";
 
 const STORAGE_KEY = "reloop.prototype.v1";
@@ -22,6 +31,7 @@ const STORAGE_KEY = "reloop.prototype.v1";
 const guestProfile: DemoProfile = {
   name: "",
   email: "",
+  phone: "",
   role: "donor",
   city: "",
   pointsMonth: 0,
@@ -35,6 +45,8 @@ const serverSnapshot: PrototypeState = {
   drafts: [],
   inspections: {},
   admin: emptyAdmin(),
+  sanitisations: initialSanitisationRecords,
+  custodyEvents: initialCustodyHistory,
 };
 
 let current: PrototypeState = serverSnapshot;
@@ -54,12 +66,14 @@ function hydrate() {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw) as PrototypeState;
-    if (!parsed?.profile?.email || !parsed.profile.role) return;
+    if (!parsed?.profile?.role || !parsed?.profile?.name) return;
     current = {
       profile: guestProfile,
       drafts: Array.isArray(parsed.drafts) ? parsed.drafts : [],
       inspections: parsed.inspections ?? {},
       admin: { ...emptyAdmin(), ...parsed.admin },
+      sanitisations: { ...initialSanitisationRecords, ...(parsed.sanitisations ?? {}) },
+      custodyEvents: { ...initialCustodyHistory, ...(parsed.custodyEvents ?? {}) },
     };
   } catch {
     window.localStorage.removeItem(STORAGE_KEY);
@@ -86,7 +100,7 @@ function emptySubscribe() {
 
 type SessionContextValue = PrototypeState & {
   ready: boolean;
-  signIn: (next: Pick<DemoProfile, "name" | "email" | "role">) => void;
+  signIn: (next: Pick<DemoProfile, "name" | "role"> & { email?: string; phone?: string; city?: string }) => void;
   signOut: () => void;
   setRole: (role: Role) => void;
   addDraft: (pickup: PickupRecord) => void;
@@ -102,6 +116,12 @@ type SessionContextValue = PrototypeState & {
   ) => void;
   addReward: (event: RewardEvent) => void;
   publishWinners: () => void;
+  submitSanitisation: (record: SanitisationRecord) => void;
+  verifySanitisation: (
+    pickupId: string,
+    status: SanitisationVerificationStatus,
+  ) => void;
+  addCustodyEvent: (event: CustodyEvent) => void;
 };
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -163,14 +183,18 @@ export function PrototypeSessionProvider({ children }: { children: ReactNode }) 
             : [...ids, userId];
           return { ...snapshot, admin: { ...snapshot.admin, suspendedUserIds } };
         }),
-      setRecyclerStatus: (id, status) =>
+      setRecyclerStatus: (id, status) => {
+        if (state.profile.role !== "admin") {
+          throw new Error("Only authorised administrators can update recycler verification.");
+        }
         update((snapshot) => ({
           ...snapshot,
           admin: {
             ...snapshot.admin,
             recyclerStatus: { ...snapshot.admin.recyclerStatus, [id]: status },
           },
-        })),
+        }));
+      },
       setDonationStatus: (id, status) =>
         update((snapshot) => ({
           ...snapshot,
@@ -192,6 +216,93 @@ export function PrototypeSessionProvider({ children }: { children: ReactNode }) 
           ...snapshot,
           admin: { ...snapshot.admin, winnersPublished: true },
         })),
+      submitSanitisation: (record) => {
+        if (state.profile.role !== "recycler" && state.profile.role !== "admin") {
+          throw new Error("Only authorised recyclers or admins can submit sanitisation records.");
+        }
+        if (record.status === "completed" && !record.verificationEvidence?.trim()) {
+          throw new Error("Verification evidence or reference is required when marking sanitisation completed.");
+        }
+        update((snapshot) => {
+          const prevEvents = snapshot.custodyEvents[record.pickupId] ?? [];
+          const custodyEvent: CustodyEvent = {
+            id: `cst-san-${Date.now()}`,
+            pickupId: record.pickupId,
+            deviceId: record.deviceId,
+            stage: "sanitisation",
+            action: `Sanitisation recorded: ${record.status.replace("_", " ")} via ${record.method}`,
+            responsibleUserId: snapshot.profile.email || "recycler-auth",
+            responsibleUserName: record.technicianName || snapshot.profile.name || "Technician",
+            responsibleRole: snapshot.profile.role,
+            responsibleOrg: record.responsibleRecycler,
+            timestamp: new Date().toISOString(),
+            notes: record.notes || `Evidence: ${record.verificationEvidence || "None"}`,
+          };
+          return {
+            ...snapshot,
+            sanitisations: {
+              ...snapshot.sanitisations,
+              [record.pickupId]: record,
+            },
+            custodyEvents: {
+              ...snapshot.custodyEvents,
+              [record.pickupId]: [...prevEvents, custodyEvent],
+            },
+          };
+        });
+      },
+      verifySanitisation: (pickupId, status) => {
+        if (state.profile.role !== "admin") {
+          throw new Error("Only authorised administrators can approve or verify sanitisation records.");
+        }
+        update((snapshot) => {
+          const existing = snapshot.sanitisations[pickupId];
+          if (!existing) return snapshot;
+          const updated: SanitisationRecord = {
+            ...existing,
+            verificationStatus: status,
+            verifiedBy: snapshot.profile.name || "Administrator",
+            verifiedAt: new Date().toISOString(),
+          };
+          const prevEvents = snapshot.custodyEvents[pickupId] ?? [];
+          const auditEvent: CustodyEvent = {
+            id: `cst-ver-${Date.now()}`,
+            pickupId,
+            deviceId: existing.deviceId,
+            stage: "sanitisation",
+            action: `TrustShield Sanitisation ${status === "verified" ? "Approved" : "Rejected"} by Admin`,
+            responsibleUserId: snapshot.profile.email || "admin-auth",
+            responsibleUserName: snapshot.profile.name || "Administrator",
+            responsibleRole: "admin",
+            responsibleOrg: "Scrapo TrustShield Verification",
+            timestamp: new Date().toISOString(),
+            notes: `Status changed to ${status}. Verification audit confirmed.`,
+          };
+          return {
+            ...snapshot,
+            sanitisations: {
+              ...snapshot.sanitisations,
+              [pickupId]: updated,
+            },
+            custodyEvents: {
+              ...snapshot.custodyEvents,
+              [pickupId]: [...prevEvents, auditEvent],
+            },
+          };
+        });
+      },
+      addCustodyEvent: (event) => {
+        update((snapshot) => {
+          const prev = snapshot.custodyEvents[event.pickupId] ?? [];
+          return {
+            ...snapshot,
+            custodyEvents: {
+              ...snapshot.custodyEvents,
+              [event.pickupId]: [...prev, event],
+            },
+          };
+        });
+      },
     };
   }, [ready, state]);
 

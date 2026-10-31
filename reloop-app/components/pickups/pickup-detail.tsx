@@ -10,11 +10,14 @@ import { loadPickups } from "@/lib/supabase/records";
 import { useLive } from "@/lib/supabase/use-live";
 import { usePrototype } from "@/lib/prototype/session";
 import { DonationCertificate } from "@/components/pickups/donation-certificate";
+import { DigitalTrustPassport } from "@/components/trustshield/digital-trust-passport";
+import { AITrackerPanel } from "@/components/tracker/ai-tracker-panel";
 import { cx } from "@/lib/cx";
+import { initialCustodyHistory, initialSanitisationRecords } from "@/lib/mock/data";
 
 export function PickupDetail({ id }: { id: string }) {
   const router = useRouter();
-  const { profile } = usePrototype();
+  const { profile, sanitisations, custodyEvents, admin, verifySanitisation } = usePrototype();
   const live = useLive(`pickup:${id}`, () => loadPickups(createClient()));
   const pickup = live.data?.find((item) => item.id === id);
 
@@ -32,17 +35,69 @@ export function PickupDetail({ id }: { id: string }) {
     );
   }
 
+  // TrustShield Privacy Access Rules:
+  // Restrict personal contact and pickup information to authorised users (donor, assigned recycler, or admin).
+  const isAuthorized =
+    profile.role === "admin" ||
+    profile.role === "donor" ||
+    profile.role === "recycler";
+
+  const maskedAddress = isAuthorized
+    ? `${pickup.address}, ${pickup.city}`
+    : `Area in ${pickup.city} · Full street address restricted to authorized collection partner`;
+
+  const maskedPhone = isAuthorized
+    ? pickup.recycler.phone
+    : "Protected by TrustShield · Visible to assigned donor & partner";
+
+  const sanitisationRecord = sanitisations[pickup.id] ?? initialSanitisationRecords[pickup.id] ?? null;
+  const deviceCustody = custodyEvents[pickup.id] ?? initialCustodyHistory[pickup.id] ?? [];
+
+  // Check recycler verification
+  const recyclerStatus = admin.recyclerStatus["rc-1"] ?? "verified";
+  const isRecyclerVerified = recyclerStatus === "verified";
+
+  // Only show certified badge if sanitisation has verified status
+  const canShowCertificate =
+    pickup.showCertificate &&
+    sanitisationRecord?.status === "completed" &&
+    sanitisationRecord?.verificationStatus === "verified";
+
   return (
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm font-semibold text-olive">Pickup {pickup.trackingId}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-semibold text-olive">Pickup {pickup.trackingId}</p>
+            <Pill tone="paper">TrustShield Monitored</Pill>
+          </div>
           <h1 className="mt-1 text-3xl font-extrabold tracking-tight sm:text-4xl">{pickup.deviceName}</h1>
-          <p className="mt-2 text-sm text-muted">{pickup.address}, {pickup.city}</p>
+          <p className="mt-2 text-sm text-muted">{maskedAddress}</p>
         </div>
         <Button href="/pickups" variant="ghost">All pickups</Button>
       </div>
-      {pickup.showCertificate ? (
+
+      {/* Scrapo AI Tracker: Live Status Intelligence & Assistant */}
+      <AITrackerPanel
+        pickup={pickup}
+        currentUserRole={profile.role}
+      />
+
+      {/* Scrapo TrustShield: Digital Trust Passport */}
+      <DigitalTrustPassport
+        pickup={pickup}
+        sanitisation={sanitisationRecord}
+        custodyEvents={deviceCustody}
+        currentUserRole={profile.role}
+        isOwnerOrAuthorized={isAuthorized}
+        onVerifySanitisation={
+          profile.role === "admin"
+            ? (status) => verifySanitisation(pickup.id, status)
+            : undefined
+        }
+      />
+
+      {canShowCertificate ? (
         <DonationCertificate
           donor={profile.name}
           device={pickup.deviceName}
@@ -55,7 +110,12 @@ export function PickupDetail({ id }: { id: string }) {
           )}
           certificateId={pickup.id}
         />
+      ) : pickup.status === "donated" || pickup.status === "completed" ? (
+        <div className="rounded-2xl border border-line bg-paper/30 p-4 text-xs text-muted">
+          <strong className="text-ink">TrustShield Audit Note:</strong> Certificate of successful donation is held until verified sanitisation erasure evidence is validated by an administrator.
+        </div>
       ) : null}
+
       <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
         <Card>
           <h2 className="text-lg font-medium">Collection</h2>
@@ -82,8 +142,16 @@ export function PickupDetail({ id }: { id: string }) {
               <dd className="text-muted">{pickup.recycler.contact}</dd>
             </div>
             <div>
+              <dt className="font-semibold">Verification Status</dt>
+              <dd className="mt-1">
+                <Pill tone={isRecyclerVerified ? "lime" : "paper"}>
+                  {isRecyclerVerified ? "Verified Partner" : "Pending Verification"}
+                </Pill>
+              </dd>
+            </div>
+            <div>
               <dt className="font-semibold">Phone</dt>
-              <dd className="text-muted">{pickup.recycler.phone}</dd>
+              <dd className="text-muted">{maskedPhone}</dd>
             </div>
             <div>
               <dt className="font-semibold">License</dt>

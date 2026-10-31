@@ -29,6 +29,7 @@ export type PickupStatus =
 export type DemoProfile = {
   name: string;
   email: string;
+  phone?: string;
   role: Role;
   city: string;
   pointsMonth: number;
@@ -128,6 +129,7 @@ export type AdminUser = {
   id: string;
   name: string;
   email: string;
+  phone?: string;
   role: Role;
   city: string;
   points: number;
@@ -139,6 +141,51 @@ export type RecyclerAccount = {
   city: string;
   license: string;
   status: "pending" | "verified" | "needs_info";
+  verifiedAt?: string;
+  verifiedBy?: string;
+};
+
+export type SanitisationStatus = "pending" | "in_progress" | "completed" | "failed";
+
+export type SanitisationVerificationStatus = "pending_review" | "verified" | "rejected";
+
+export type SanitisationRecord = {
+  id: string;
+  deviceId: string;
+  pickupId: string;
+  status: SanitisationStatus;
+  method: string;
+  responsibleRecycler: string;
+  technicianId: string;
+  technicianName: string;
+  completedAt: string | null;
+  verificationEvidence: string;
+  verificationStatus: SanitisationVerificationStatus;
+  verifiedBy: string | null;
+  verifiedAt: string | null;
+  notes?: string;
+};
+
+export type CustodyStage =
+  | "submission"
+  | "pickup_confirmation"
+  | "handover"
+  | "inspection"
+  | "sanitisation"
+  | "outcome";
+
+export type CustodyEvent = {
+  id: string;
+  pickupId: string;
+  deviceId: string;
+  stage: CustodyStage;
+  action: string;
+  responsibleUserId: string;
+  responsibleUserName: string;
+  responsibleRole: Role | "technician" | "system";
+  responsibleOrg?: string;
+  timestamp: string;
+  notes: string;
 };
 
 export type DonationApproval = {

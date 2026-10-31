@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/client";
 import { createDevicePickup } from "@/lib/supabase/records";
 import type { Category, Condition, WorkingStatus } from "@/lib/types";
 import { estimateDevice } from "@/lib/valuation";
+import { PrivacyNotice } from "@/components/trustshield/privacy-notice";
 
 const categories = Object.keys(categoryLabel) as Category[];
 const conditions = Object.keys(conditionLabel) as Condition[];
@@ -157,6 +158,8 @@ export function ListingView({ initialCategory }: { initialCategory?: Category })
             Photos stay in this browser session. The estimate is a formula on the page, not an appraisal.
           </p>
         </div>
+
+        <PrivacyNotice />
 
         <Card>
           <h2 className="text-lg font-medium" id="category-field" tabIndex={-1}>Category</h2>
