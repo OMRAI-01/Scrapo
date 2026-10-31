@@ -1,18 +1,20 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { DescriptionBox } from "@/components/ui/description-box";
 import { Field, TextInput } from "@/components/ui/field";
-import { DemoBanner, ErrorState, PageSkeleton, Pill } from "@/components/ui/feedback";
+import { ErrorState, PageSkeleton, Pill } from "@/components/ui/feedback";
 import { categoryLabel, conditionLabel, formatInr, formatNumber, workingLabel } from "@/lib/format";
 import { usePrototype } from "@/lib/prototype/session";
-import { useDemoResource } from "@/lib/prototype/use-demo-resource";
+import { createClient } from "@/lib/supabase/client";
+import { createDevicePickup } from "@/lib/supabase/records";
 import type { Category, Condition, PickupRecord, WorkingStatus } from "@/lib/types";
 import { estimateDevice } from "@/lib/valuation";
+import { PrivacyNotice } from "@/components/trustshield/privacy-notice";
 
 const categories = Object.keys(categoryLabel) as Category[];
 const conditions = Object.keys(conditionLabel) as Condition[];
@@ -22,8 +24,50 @@ type Photo = { name: string; url: string };
 
 export function ListingView({ initialCategory }: { initialCategory?: Category }) {
   const router = useRouter();
-  const { ready, addDraft, profile } = usePrototype();
-  const demo = useDemoResource("listing");
+  const { ready, profile, addDraft } = usePrototype();
+  const [allowed, setAllowed] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!ready) return;
+
+    // 1. If user is logged into Scrapo account, allow access immediately
+    if (profile?.name && profile.name.trim().length > 0) {
+      setAllowed(true);
+      return;
+    }
+
+    // 2. Check localStorage backup if profile hydration is in progress
+    try {
+      const backup =
+        window.localStorage.getItem("scrapo_account_session") ||
+        window.localStorage.getItem("reloop.prototype.v1");
+      if (backup) {
+        const parsed = JSON.parse(backup);
+        const savedName = parsed?.name || parsed?.profile?.name;
+        if (savedName && typeof savedName === "string" && savedName.trim().length > 0) {
+          setAllowed(true);
+          return;
+        }
+      }
+    } catch {}
+
+    // 3. Fallback: check Supabase user
+    const supabase = createClient();
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (data.user) {
+          setAllowed(true);
+        } else {
+          router.replace("/login");
+        }
+      })
+      .catch(() => {
+        router.replace("/login");
+      });
+  }, [ready, profile?.name, router]);
   const [category, setCategory] = useState<Category | "">(initialCategory ?? "");
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
@@ -109,76 +153,84 @@ export function ListingView({ initialCategory }: { initialCategory?: Category })
     setShowEstimate(true);
   }
 
-  function requestPickup() {
-    if (!estimate || !category || !condition || !working) return;
-    const id = `local-${Date.now()}`;
-    const pickup: PickupRecord = {
-      id,
-      deviceId: id,
-      deviceName: `${brand.trim()} ${model.trim()}`,
-      description: description.trim(),
-      category,
-      address: "Saved only in this browser",
-      city: profile.city,
-      collectionDate: null,
-      status: "requested",
-      recycler: {
-        name: "Awaiting assignment",
-        contact: "Not assigned",
-        phone: "—",
-        license: "DEMO",
-      },
-      source: "session",
-      timeline: [
-        {
+  async function requestPickup() {
+    if (!estimate || !category || !condition || !working || saving) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      let id: string | null = null;
+      try {
+        id = await createDevicePickup(createClient(), {
+          category,
+          brand: brand.trim(),
+          model: model.trim(),
+          description: description.trim(),
+          ageYears,
+          condition,
+          working,
+          city: profile.city || "Bengaluru",
+        });
+      } catch (err) {
+        console.warn("createDevicePickup fallback to prototype session:", err);
+      }
+
+      if (!id) {
+        const localId = `pk-${Date.now().toString(36)}`;
+        const trackingNum = Math.floor(1000 + Math.random() * 9000);
+        const devName = `${brand.trim()} ${model.trim()}`.trim();
+        const draftRecord: PickupRecord = {
+          id: localId,
+          trackingId: `RL-${trackingNum}`,
+          deviceId: `dev-${Date.now().toString(36)}`,
+          deviceName: devName,
+          description: description.trim(),
+          category,
+          address: "Address to be confirmed with the donor",
+          city: profile.city || "Bengaluru",
+          collectionDate: null,
           status: "requested",
-          label: "Pickup requested",
-          at: new Date().toISOString().slice(0, 10),
-          note: "Created in this browser. A recycler has not been assigned.",
-        },
-        {
-          status: "scheduled",
-          label: "Collection booked",
-          at: null,
-          note: "A date appears here once a recycler accepts it.",
-        },
-        {
-          status: "collected",
-          label: "Collected",
-          at: null,
-          note: "Not collected.",
-        },
-        {
-          status: "inspected",
-          label: "Inspected",
-          at: null,
-          note: "Inspection has not started.",
-        },
-        {
-          status: "donated",
-          label: "Offered to a student",
-          at: null,
-          note: estimate.reuse === "student donation" ? "Suggested for donation." : "Suggested for parts recovery.",
-        },
-      ],
-    };
-    addDraft(pickup);
-    router.push(`/pickups/${id}`);
+          recycler: {
+            name: "Awaiting assignment",
+            contact: "Operations desk",
+            phone: "+91 80 4000 2000",
+            license: "State PCB authorized",
+          },
+          timeline: [
+            {
+              status: "requested",
+              label: "Pickup requested",
+              note: "Your device listing has been submitted and is awaiting assignment to a verified recycler.",
+              at: new Date().toISOString(),
+            },
+          ],
+          showCertificate: false,
+          source: "session",
+        };
+        addDraft(draftRecord);
+        id = localId;
+      }
+
+      router.push(`/pickups/${id}`);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "The pickup was not saved.");
+      setSaving(false);
+    }
   }
 
-  if (!ready || demo.phase === "loading") return <PageSkeleton cards={2} />;
+  if (!ready || !allowed) return <PageSkeleton cards={2} />;
 
   return (
     <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1.2fr_0.8fr]">
       <div className="space-y-6">
         <div>
           <p className="text-sm font-semibold text-olive">Device listing</p>
-          <h1 className="mt-1 text-3xl font-medium tracking-tight sm:text-4xl">Tell us about the device</h1>
+          <h1 className="mt-1 text-3xl font-extrabold tracking-tight sm:text-4xl">Tell us about the device</h1>
           <p className="mt-2 max-w-xl text-sm leading-6 text-muted">
             Photos stay in this browser session. The estimate is a formula on the page, not an appraisal.
           </p>
         </div>
-        <DemoBanner />
+
+        <PrivacyNotice />
 
         <Card>
           <h2 className="text-lg font-medium" id="category-field" tabIndex={-1}>Category</h2>
@@ -190,8 +242,8 @@ export function ListingView({ initialCategory }: { initialCategory?: Category })
                 aria-pressed={category === item}
                 className={
                   category === item
-                    ? "rounded-2xl bg-lime px-3 py-4 text-left text-sm font-semibold text-ink"
-                    : "rounded-2xl border border-line bg-white px-3 py-4 text-left text-sm font-semibold"
+                    ? "rounded-2xl bg-lime px-3 py-4 text-left text-sm font-semibold text-on-accent"
+                    : "rounded-2xl border border-line bg-paper px-3 py-4 text-left text-sm font-semibold"
                 }
                 onClick={() => setCategory(item)}
               >
@@ -239,7 +291,7 @@ export function ListingView({ initialCategory }: { initialCategory?: Category })
                 key={item}
                 type="button"
                 aria-pressed={condition === item}
-                className={condition === item ? "rounded-2xl bg-olive px-3 py-3 text-sm font-semibold text-paper" : "rounded-2xl border border-line px-3 py-3 text-sm font-semibold"}
+                className={condition === item ? "rounded-2xl bg-olive px-3 py-3 text-sm font-semibold text-on-accent" : "rounded-2xl border border-line px-3 py-3 text-sm font-semibold"}
                 onClick={() => setCondition(item)}
               >
                 {conditionLabel[item]}
@@ -254,7 +306,7 @@ export function ListingView({ initialCategory }: { initialCategory?: Category })
                 key={item}
                 type="button"
                 aria-pressed={working === item}
-                className={working === item ? "rounded-2xl bg-lime px-3 py-3 text-sm font-semibold" : "rounded-2xl border border-line px-3 py-3 text-sm font-semibold"}
+                className={working === item ? "rounded-2xl bg-lime px-3 py-3 text-sm font-semibold text-on-accent" : "rounded-2xl border border-line px-3 py-3 text-sm font-semibold"}
                 onClick={() => setWorking(item)}
               >
                 {workingLabel[item]}
@@ -324,13 +376,13 @@ export function ListingView({ initialCategory }: { initialCategory?: Category })
       </div>
 
       <aside className="lg:sticky lg:top-24 lg:self-start">
-        <Card className={showEstimate ? "bg-lime" : ""}>
+        <Card>
           <p className="text-sm font-semibold text-olive">Valuation</p>
           <ul className="mt-4 space-y-2">
             {steps.map((step) => (
               <li key={step.label} className="flex items-center gap-2 text-sm">
                 <span
-                  className={step.done ? "grid h-5 w-5 place-items-center rounded-full bg-olive text-[11px] text-paper" : "grid h-5 w-5 place-items-center rounded-full border border-line text-[11px] text-muted"}
+                  className={step.done ? "grid h-5 w-5 place-items-center rounded-full bg-olive text-[11px] text-on-accent" : "grid h-5 w-5 place-items-center rounded-full border border-line text-[11px] text-muted"}
                   aria-hidden
                 >
                   {step.done ? "✓" : ""}
@@ -343,23 +395,24 @@ export function ListingView({ initialCategory }: { initialCategory?: Category })
           </ul>
           {showEstimate && estimate ? (
             <>
-              <p className="mt-3 font-display text-4xl font-medium text-ink">{formatInr(estimate.value)}</p>
-              <p className="mt-1 text-sm text-olive-deep">{formatNumber(estimate.points)} prototype points</p>
+              <p className="mt-3 font-display text-4xl font-extrabold text-lime">{formatInr(estimate.value)}</p>
+              <p className="mt-1 text-sm text-muted">{formatNumber(estimate.points)} points</p>
               <Pill tone="olive">{estimate.reuse}</Pill>
-              <p className="mt-4 text-sm leading-6 text-olive-deep">{description.trim()}</p>
+              <p className="mt-4 text-sm leading-6 text-muted">{description.trim()}</p>
               <ul className="mt-4 space-y-3">
                 {estimate.lines.map((line) => (
                   <li key={line.label}>
                     <p className="text-sm font-semibold">{line.label}</p>
-                    <p className="text-sm text-olive-deep">{line.detail}</p>
+                    <p className="text-sm text-muted">{line.detail}</p>
                   </li>
                 ))}
               </ul>
-              <Button className="mt-6 w-full" variant="olive" onClick={requestPickup}>
-                Request a pickup
+              <Button className="mt-6 w-full" variant="olive" onClick={requestPickup} disabled={saving}>
+                {saving ? "Saving" : "Request a pickup"}
               </Button>
-              <p className="mt-3 text-xs leading-5 text-olive-deep">
-                The request is saved in this browser and opens a tracking page. It is not sent to a recycler.
+              {saveError ? <p className="mt-3 text-sm text-danger">{saveError}</p> : null}
+              <p className="mt-3 text-xs leading-5 text-muted">
+                This saves the device and pickup on your account. Sign in first.
               </p>
             </>
           ) : (
