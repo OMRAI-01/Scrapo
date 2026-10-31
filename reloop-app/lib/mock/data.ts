@@ -35,6 +35,7 @@ const greenCircuit = {
 export const pickups: PickupRecord[] = [
   {
     id: "pk-2041",
+    trackingId: "pk-2041",
     deviceId: "dv-2041",
     deviceName: "MacBook Air 2020",
     description:
@@ -45,6 +46,7 @@ export const pickups: PickupRecord[] = [
     collectionDate: "2026-11-04",
     status: "scheduled",
     recycler: greenCircuit,
+    showCertificate: false,
     source: "demo",
     timeline: [
       {
@@ -87,6 +89,7 @@ export const pickups: PickupRecord[] = [
   },
   {
     id: "pk-2033",
+    trackingId: "pk-2033",
     deviceId: "dv-2033",
     deviceName: "Sony WH-CH520",
     description:
@@ -97,6 +100,7 @@ export const pickups: PickupRecord[] = [
     collectionDate: "2026-10-22",
     status: "processing",
     recycler: greenCircuit,
+    showCertificate: false,
     source: "demo",
     timeline: [
       {
@@ -139,6 +143,7 @@ export const pickups: PickupRecord[] = [
   },
   {
     id: "pk-1988",
+    trackingId: "pk-1988",
     deviceId: "dv-1988",
     deviceName: "Dell Latitude 5420",
     description:
@@ -149,6 +154,7 @@ export const pickups: PickupRecord[] = [
     collectionDate: "2026-09-12",
     status: "donated",
     recycler: greenCircuit,
+    showCertificate: false,
     source: "demo",
     timeline: [
       {

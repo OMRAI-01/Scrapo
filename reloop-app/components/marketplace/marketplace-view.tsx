@@ -11,7 +11,18 @@ import { usePrototype } from "@/lib/prototype/session";
 import { createClient } from "@/lib/supabase/client";
 import { createAssistance, loadAssistance, loadListings } from "@/lib/supabase/records";
 import { useLive } from "@/lib/supabase/use-live";
-import type { Category } from "@/lib/types";
+import type { Category, Condition } from "@/lib/types";
+
+type MatchFit = "suitable" | "repair" | "unsuitable";
+type MatchCard = {
+  id: string;
+  title: string;
+  category: Category;
+  condition: Condition;
+  campus: string;
+  fit: MatchFit;
+  explanation: string;
+};
 
 const deviceWords: Category[] = ["phone", "laptop", "tablet", "monitor", "appliance", "accessory"];
 
@@ -26,13 +37,17 @@ export function MarketplaceView() {
   const [requestNote, setRequestNote] = useState("");
   const [requestError, setRequestError] = useState("");
   const [sent, setSent] = useState(false);
-  const listings = live.data?.listings ?? [];
+  const [matching, setMatching] = useState(false);
+  const [matchNote, setMatchNote] = useState("");
+  const [matches, setMatches] = useState<MatchCard[] | null>(null);
+  const listings = live.data?.listings;
   const assistanceRequests = live.data?.requests ?? [];
 
   const devices = useMemo(() => {
+    const rows = listings ?? [];
     const needle = query.trim().toLowerCase();
-    if (!needle) return listings;
-    return listings.filter((item) =>
+    if (!needle) return rows;
+    return rows.filter((item) =>
       `${item.title} ${item.campus} ${item.category} ${item.donation}`.toLowerCase().includes(needle),
     );
   }, [listings, query]);
@@ -130,6 +145,8 @@ export function MarketplaceView() {
                 setRequestNote(value);
                 setSent(false);
                 setRequestError("");
+                setMatches(null);
+                setMatchNote("");
               }}
               onFill={() => {
                 setRequestNote(
@@ -145,32 +162,90 @@ export function MarketplaceView() {
               Request saved.
             </p>
           ) : null}
-          <Button
-            className="mt-4"
-            variant="olive"
-            onClick={() => {
-              const note = requestNote.trim();
-              const category = deviceWords.find((word) => note.toLowerCase().includes(word));
-              if (note.length < 24 || !category) {
-                setSent(false);
-                setRequestError(category ? "Describe what you need, or use Fill description." : "Name the device: phone, laptop, tablet, monitor, appliance, or accessory.");
-                document.getElementById("need")?.focus();
-                return;
-              }
-              setRequestError("");
-              createAssistance(createClient(), { need: note, campus: profile.city, category })
-                .then(() => {
-                  setSent(true);
-                  live.retry();
-                })
-                .catch((error: unknown) => {
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <Button
+              variant="olive"
+              onClick={() => {
+                const note = requestNote.trim();
+                const category = deviceWords.find((word) => note.toLowerCase().includes(word));
+                if (note.length < 24 || !category) {
                   setSent(false);
-                  setRequestError(error instanceof Error ? error.message : "The request was not saved.");
-                });
-            }}
-          >
-            Send request
-          </Button>
+                  setRequestError(category ? "Describe what you need, or use Fill description." : "Name the device: phone, laptop, tablet, monitor, appliance, or accessory.");
+                  document.getElementById("need")?.focus();
+                  return;
+                }
+                setRequestError("");
+                createAssistance(createClient(), { need: note, campus: profile.city, category })
+                  .then(() => {
+                    setSent(true);
+                    live.retry();
+                  })
+                  .catch((error: unknown) => {
+                    setSent(false);
+                    setRequestError(error instanceof Error ? error.message : "The request was not saved.");
+                  });
+              }}
+            >
+              Send request
+            </Button>
+            <Button
+              variant="ghost"
+              disabled={matching}
+              onClick={() => {
+                const note = requestNote.trim();
+                const category = deviceWords.find((word) => note.toLowerCase().includes(word));
+                if (note.length < 12 || !category) {
+                  setMatches(null);
+                  setMatchNote("");
+                  setRequestError(category ? "Describe what you need, or use Fill description." : "Name the device: phone, laptop, tablet, monitor, appliance, or accessory.");
+                  document.getElementById("need")?.focus();
+                  return;
+                }
+                setRequestError("");
+                setMatching(true);
+                fetch("/api/match", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ need: note }),
+                })
+                  .then(async (response) => {
+                    const body = (await response.json()) as { error?: string; message?: string; ai?: string; matches?: MatchCard[] };
+                    if (!response.ok) throw new Error(body.error || "The match could not be loaded.");
+                    setMatches(body.matches ?? []);
+                    setMatchNote(
+                      body.ai === "unavailable"
+                        ? "The AI provider did not respond. These lines use the listing condition and category."
+                        : body.message || "",
+                    );
+                  })
+                  .catch((error: unknown) => {
+                    setMatches(null);
+                    setMatchNote("");
+                    setRequestError(error instanceof Error ? error.message : "The match could not be loaded.");
+                  })
+                  .finally(() => setMatching(false));
+              }}
+            >
+              {matching ? "Matching" : "Find a match"}
+            </Button>
+          </div>
+          {matchNote ? <p className="mt-3 text-sm text-muted">{matchNote}</p> : null}
+          {matches && matches.length === 0 ? (
+            <p className="mt-3 text-sm text-muted">No available device is listed for that request.</p>
+          ) : null}
+          {matches && matches.length > 0 ? (
+            <ul className="mt-4 space-y-3">
+              {matches.map((item) => (
+                <li key={item.id}>
+                  <Pill tone={item.fit === "suitable" ? "lime" : item.fit === "repair" ? "paper" : "danger"}>
+                    {item.fit === "suitable" ? "Suitable" : item.fit === "repair" ? "Repair candidate" : "Unsuitable"}
+                  </Pill>
+                  <p className="mt-2 text-sm font-semibold text-ink">{item.title}</p>
+                  <p className="mt-1 text-sm leading-6 text-muted">{item.explanation}</p>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </Card>
       </section>
     </div>

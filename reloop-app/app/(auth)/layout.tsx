@@ -16,7 +16,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           Give electronics <span className="text-lime">a second life.</span>
         </p>
         <p className="mt-4 max-w-sm text-sm leading-6 text-muted">
-          Accounts on this prototype live in your browser. A password is checked for length only. It is never sent anywhere.
+          Sign in with the account stored in Supabase. The password is checked there, not stored in this browser.
         </p>
         <p className="absolute right-8 bottom-8 text-sm text-lime">Collect . Refurbish . Donate .</p>
       </aside>

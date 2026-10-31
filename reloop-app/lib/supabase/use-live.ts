@@ -4,23 +4,31 @@ import { useEffect, useState } from "react";
 
 export function useLive<T>(key: string, load: () => Promise<T>) {
   const [attempt, setAttempt] = useState(0);
-  const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
-  const [data, setData] = useState<T | null>(null);
-  const [message, setMessage] = useState("");
+  const [state, setState] = useState<{
+    key: string;
+    attempt: number;
+    phase: "loading" | "ready" | "error";
+    data: T | null;
+    message: string;
+  }>({ key, attempt: 0, phase: "loading", data: null, message: "" });
+  const matches = state.key === key && state.attempt === attempt;
 
   useEffect(() => {
     let cancel = false;
-    setPhase("loading");
     load()
       .then((value) => {
         if (cancel) return;
-        setData(value);
-        setPhase("ready");
+        setState({ key, attempt, phase: "ready", data: value, message: "" });
       })
       .catch((error: unknown) => {
         if (cancel) return;
-        setMessage(error instanceof Error ? error.message : "Could not load records.");
-        setPhase("error");
+        setState({
+          key,
+          attempt,
+          phase: "error",
+          data: null,
+          message: error instanceof Error ? error.message : "Could not load records.",
+        });
       });
     return () => {
       cancel = true;
@@ -30,9 +38,9 @@ export function useLive<T>(key: string, load: () => Promise<T>) {
   }, [key, attempt]);
 
   return {
-    phase,
-    data,
-    message,
+    phase: matches ? state.phase : "loading",
+    data: matches ? state.data : null,
+    message: matches ? state.message : "",
     retry: () => setAttempt((value) => value + 1),
   };
 }

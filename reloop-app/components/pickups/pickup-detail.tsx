@@ -36,13 +36,13 @@ export function PickupDetail({ id }: { id: string }) {
     <div className="mx-auto max-w-6xl space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <p className="text-sm font-semibold text-olive">Pickup {pickup.id}</p>
+          <p className="text-sm font-semibold text-olive">Pickup {pickup.trackingId}</p>
           <h1 className="mt-1 text-3xl font-extrabold tracking-tight sm:text-4xl">{pickup.deviceName}</h1>
           <p className="mt-2 text-sm text-muted">{pickup.address}, {pickup.city}</p>
         </div>
         <Button href="/pickups" variant="ghost">All pickups</Button>
       </div>
-      {pickup.status === "donated" || pickup.status === "completed" ? (
+      {pickup.showCertificate ? (
         <DonationCertificate
           donor={profile.name}
           device={pickup.deviceName}

@@ -14,12 +14,17 @@ export type WorkingStatus = "working" | "partial" | "not_working";
 
 export type PickupStatus =
   | "requested"
+  | "assigned"
   | "scheduled"
   | "collected"
   | "inspected"
   | "processing"
   | "donated"
-  | "completed";
+  | "completed"
+  | "rejected"
+  | "cancelled"
+  | "pickup_failed"
+  | "awaiting_rescheduling";
 
 export type DemoProfile = {
   name: string;
@@ -56,6 +61,7 @@ export type TimelineEvent = {
 
 export type PickupRecord = {
   id: string;
+  trackingId: string;
   deviceId: string;
   deviceName: string;
   description: string;
@@ -71,6 +77,7 @@ export type PickupRecord = {
     license: string;
   };
   timeline: TimelineEvent[];
+  showCertificate: boolean;
   source: "demo" | "session";
 };
 

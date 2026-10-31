@@ -32,7 +32,7 @@ export function DemoBanner({ children }: { children?: ReactNode }) {
     <div className="rounded-2xl border border-line bg-paper px-4 py-3 text-sm leading-6 text-ink">
       <span className="font-semibold text-lime">Demo data.</span>{" "}
       {children ??
-        "Names, points, prices, and pickups on this screen are prototype samples stored in this browser. They are not live records."}
+        "Names, points, prices, and pickups on this screen come from Supabase."}
     </div>
   );
 }
@@ -40,7 +40,7 @@ export function DemoBanner({ children }: { children?: ReactNode }) {
 export function PageSkeleton({ cards = 4 }: { cards?: number }) {
   return (
     <div className="space-y-4" aria-busy="true" aria-live="polite">
-      <span className="sr-only">Loading demo data</span>
+      <span className="sr-only">Loading</span>
       <div className="h-8 w-56 animate-pulse rounded-full bg-paper" />
       <div className="h-16 animate-pulse rounded-2xl bg-paper" />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -78,8 +78,8 @@ export function EmptyState({
 }
 
 export function ErrorState({
-  title = "This sample did not load",
-  text = "The prototype could not show this view. Try again. Nothing was sent to a server.",
+  title = "This view did not load",
+  text = "Try again. If you are signed in, your records stay in Supabase.",
   onRetry,
 }: {
   title?: string;

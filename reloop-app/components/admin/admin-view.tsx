@@ -8,7 +8,7 @@ import { EmptyState, ErrorState, PageSkeleton, Pill } from "@/components/ui/feed
 import { formatNumber, roleLabel } from "@/lib/format";
 import { usePrototype } from "@/lib/prototype/session";
 import { createClient } from "@/lib/supabase/client";
-import { loadAdmin, updateListingStatus, updateRecyclerStatus } from "@/lib/supabase/records";
+import { finalizeMonthlyWinners, loadAdmin, updateListingStatus, updateRecyclerStatus } from "@/lib/supabase/records";
 import { useLive } from "@/lib/supabase/use-live";
 
 export function AdminView() {
@@ -20,7 +20,7 @@ export function AdminView() {
   const [rewardLabel, setRewardLabel] = useState("Manual adjustment");
   const [rewardError, setRewardError] = useState("");
   const [actionError, setActionError] = useState("");
-  const directory = live.data?.users ?? [];
+  const directory = live.data?.users;
   const recyclers = live.data?.recyclers ?? [];
   const donationQueue = live.data?.donations ?? [];
   const leaderboard = live.data?.board ?? [];
@@ -28,7 +28,7 @@ export function AdminView() {
 
   const users = useMemo(() => {
     const needle = userQuery.trim().toLowerCase();
-    return directory.filter((user) =>
+    return (directory ?? []).filter((user) =>
       `${user.name} ${user.role} ${user.city}`.toLowerCase().includes(needle),
     );
   }, [directory, userQuery]);
@@ -142,7 +142,7 @@ export function AdminView() {
             onSubmit={(event) => {
               event.preventDefault();
               const points = Number(rewardPoints);
-              const member = directory.find((user) => user.name.toLowerCase() === rewardName.trim().toLowerCase());
+              const member = (directory ?? []).find((user) => user.name.toLowerCase() === rewardName.trim().toLowerCase());
               if (!member || !rewardLabel.trim() || !Number.isFinite(points) || points === 0) {
                 setRewardError("Use a member name from the directory, a reason, and a non-zero point value.");
                 return;
@@ -188,7 +188,7 @@ export function AdminView() {
               <h2 className="text-2xl font-medium">Monthly winners</h2>
               <p className="mt-2 text-sm text-muted">Top of the live monthly board.</p>
             </div>
-            <Button variant="olive" onClick={() => setActionError("Winner rows can be read here. Publishing them is not open to this client.")} disabled={admin.winnersPublished}>
+            <Button variant="olive" onClick={() => { setActionError(""); finalizeMonthlyWinners(createClient()).then(() => live.retry()).catch((error: unknown) => setActionError(error instanceof Error ? error.message : "Winners were not published.")); }} disabled={admin.winnersPublished}>
               Publish winners
             </Button>
           </div>

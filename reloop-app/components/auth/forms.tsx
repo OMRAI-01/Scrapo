@@ -15,7 +15,6 @@ export function LoginForm() {
   const { signIn } = usePrototype();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<Role>("donor");
   const [show, setShow] = useState(false);
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
@@ -46,10 +45,6 @@ export function LoginForm() {
     }
     signIn({ name: profile.full_name, email: data.user.email ?? email.trim(), role: profile.role });
     router.push(homeForRole(profile.role));
-  }
-
-  function enterDemo() {
-    setErrors({ email: "Sample profiles are not accounts. Sign up, or log in with an email that exists in Supabase." });
   }
 
   return (
@@ -87,14 +82,6 @@ export function LoginForm() {
             </button>
           </div>
         </Field>
-        <Field label="Open as" htmlFor="role">
-          <SelectInput id="role" value={role} onChange={(event) => setRole(event.target.value as Role)}>
-            <option value="donor">Donor</option>
-            <option value="student">Student</option>
-            <option value="recycler">Recycler</option>
-            <option value="admin">Admin preview</option>
-          </SelectInput>
-        </Field>
         <Button type="submit" className="w-full" size="lg">
           Continue
         </Button>
@@ -106,20 +93,6 @@ export function LoginForm() {
         <Link href="/signup" className="font-semibold text-olive">
           Create an account
         </Link>
-      </div>
-      <div className="mt-8 rounded-3xl border border-line bg-card p-4">
-        <p className="text-sm font-semibold">Sample profiles</p>
-        <div className="mt-3 grid gap-2">
-          <Button variant="ghost" onClick={enterDemo}>
-            Continue as Ananya, donor
-          </Button>
-          <Button variant="ghost" onClick={enterDemo}>
-            Continue as Priya, recycler
-          </Button>
-          <Button variant="ghost" onClick={enterDemo}>
-            Continue as Leela, admin
-          </Button>
-        </div>
       </div>
     </div>
   );
@@ -148,7 +121,11 @@ export function SignupForm() {
       password,
       options: {
         emailRedirectTo: `${window.location.origin}/verify-email?status=verified`,
-        data: { full_name: name.trim(), role },
+        data: {
+          full_name: name.trim(),
+          role,
+          ...(role === "recycler" ? { org_name: name.trim() } : {}),
+        },
       },
     });
     if (error) {
@@ -168,7 +145,7 @@ export function SignupForm() {
     <div>
       <h1 className="text-4xl font-extrabold tracking-tight">Create an account</h1>
       <p className="mt-3 text-sm leading-6 text-muted">
-        Admin access is a preview on the login screen. Recycler accounts in the real product would wait for license review.
+        Recycler accounts stay pending until an admin verifies the organization. Admin accounts are not created here.
       </p>
       <form className="mt-8 space-y-4" onSubmit={submit} noValidate>
         <Field label="Name" htmlFor="name" error={errors.name}>
@@ -204,7 +181,7 @@ export function SignupForm() {
         </Button>
       </form>
       <p className="mt-4 text-sm text-muted">
-        Already have a prototype session?{" "}
+        Already have an account?{" "}
         <Link href="/login" className="font-semibold text-olive">
           Log in
         </Link>

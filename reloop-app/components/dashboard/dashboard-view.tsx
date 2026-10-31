@@ -23,12 +23,13 @@ export function DashboardView() {
   const { profile, ready } = usePrototype();
   const live = useLive("dashboard", () => loadDashboard(createClient()));
   const [filter, setFilter] = useState<(typeof filters)[number]["id"]>("all");
-  const activity = live.data?.activity ?? [];
+  const activity = live.data?.activity;
 
   const items = useMemo(() => {
+    const rows = activity ?? [];
     if (filter === "archive") return [];
-    if (filter === "all") return activity;
-    return activity.filter((item) => item.kind === filter);
+    if (filter === "all") return rows;
+    return rows.filter((item) => item.kind === filter);
   }, [activity, filter]);
 
   if (!ready || live.phase === "loading") return <PageSkeleton />;

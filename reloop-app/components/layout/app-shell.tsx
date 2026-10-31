@@ -1,12 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { Logo } from "@/components/brand/logo";
 import { buttonClass } from "@/components/ui/button";
 import { formatNumber, roleLabel } from "@/lib/format";
-import { homeForRole } from "@/lib/prototype/model";
 import { usePrototype } from "@/lib/prototype/session";
 import { cx } from "@/lib/cx";
 import type { Role } from "@/lib/types";
@@ -38,8 +37,7 @@ function navFor(role: Role) {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const { profile, ready, setRole, signOut } = usePrototype();
+  const { profile, ready, signOut } = usePrototype();
   const [open, setOpen] = useState(false);
   const items = navFor(profile.role);
 
@@ -51,11 +49,6 @@ export function AppShell({ children }: { children: ReactNode }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
-
-  function changeRole(role: Role) {
-    setRole(role);
-    router.push(homeForRole(role));
-  }
 
   const nav = (
     <nav className="flex flex-1 flex-col gap-1" aria-label="Workspace">
@@ -114,22 +107,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="lg:hidden">
             <Logo />
           </div>
-          <label className="ml-auto text-xs font-semibold text-muted">
-            <span className="sr-only">Demo role</span>
-            <select
-              className="rounded-full border border-line bg-card px-3 py-2 text-sm font-semibold text-ink"
-              value={profile.role}
-              aria-label="Demo role"
-              onChange={(event) => changeRole(event.target.value as Role)}
-            >
-              <option value="donor">Demo role: Donor</option>
-              <option value="student">Demo role: Student</option>
-              <option value="recycler">Demo role: Recycler</option>
-              <option value="admin">Demo role: Admin</option>
-            </select>
-          </label>
-          <button type="button" className={buttonClass("ghost", "sm")} onClick={signOut}>
-            Reset profile
+          <button type="button" className={buttonClass("ghost", "sm", "ml-auto")} onClick={signOut}>
+            Sign out
           </button>
         </header>
         <div className="px-4 py-6 sm:px-6 sm:py-8">{children}</div>

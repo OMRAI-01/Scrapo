@@ -15,18 +15,73 @@ import type {
   TimelineEvent,
 } from "@/lib/types";
 import type { Database } from "@/lib/supabase/database.types";
+import { statusLabel } from "@/lib/format";
 
 export type Db = SupabaseClient<Database>;
 
 const statuses: PickupStatus[] = [
   "requested",
+  "assigned",
   "scheduled",
   "collected",
   "inspected",
   "processing",
   "donated",
   "completed",
+  "rejected",
+  "cancelled",
+  "pickup_failed",
+  "awaiting_rescheduling",
 ];
+
+const mainPath: PickupStatus[] = [
+  "requested",
+  "assigned",
+  "scheduled",
+  "collected",
+  "inspected",
+  "processing",
+  "completed",
+];
+
+function upcomingAfter(current: PickupStatus): PickupStatus[] {
+  if (current === "rejected" || current === "cancelled" || current === "completed") return [];
+  if (current === "donated") return ["completed"];
+  if (current === "pickup_failed") {
+    return ["awaiting_rescheduling", "scheduled", "collected", "inspected", "processing", "completed"];
+  }
+  if (current === "awaiting_rescheduling") {
+    return ["scheduled", "collected", "inspected", "processing", "completed"];
+  }
+  const index = mainPath.indexOf(current);
+  return index === -1 ? [] : mainPath.slice(index + 1);
+}
+
+function buildTimeline(
+  current: PickupStatus,
+  createdAt: string,
+  history: { status: string; note: string; created_at: string }[],
+): TimelineEvent[] {
+  const actual: TimelineEvent[] = history
+    .slice()
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .map((event) => {
+      const status = asStatus(event.status);
+      return {
+        status,
+        label: statusLabel[status],
+        at: event.created_at,
+        note: event.note,
+      };
+    });
+  if (actual.length === 0) {
+    actual.push({ status: current, label: statusLabel[current], at: createdAt, note: "" });
+  }
+  for (const status of upcomingAfter(current)) {
+    actual.push({ status, label: statusLabel[status], at: null, note: "" });
+  }
+  return actual;
+}
 
 function asStatus(value: string): PickupStatus {
   return statuses.includes(value as PickupStatus) ? (value as PickupStatus) : "requested";
@@ -51,7 +106,8 @@ export async function loadLeaderboard(supabase: Db, highlightId?: string): Promi
   const { data, error } = await supabase
     .from("leaderboard")
     .select("id, full_name, city, points_month")
-    .order("points_month", { ascending: false });
+    .order("points_month", { ascending: false })
+    .order("id", { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []).map((row, index) => ({
     rank: index + 1,
@@ -70,7 +126,7 @@ export async function loadListings(supabase: Db): Promise<ListingRecord[]> {
   const rows = data ?? [];
   const ids = rows.map((row) => row.device_id);
   const devices = ids.length
-    ? await supabase.from("devices").select("id, brand, model, category, condition").in("id", ids)
+    ? await supabase.from("listed_device_cards").select("id, brand, model, category, condition").in("id", ids)
     : { data: [] as { id: string; brand: string; model: string; category: string; condition: string }[] };
   const byId = new Map((devices.data ?? []).map((device) => [device.id, device]));
   return rows.map((row) => {
@@ -91,8 +147,8 @@ export async function loadListings(supabase: Db): Promise<ListingRecord[]> {
 
 export async function loadAssistance(supabase: Db): Promise<AssistanceRequest[]> {
   const { data, error } = await supabase
-    .from("assistance_requests")
-    .select("id, student_id, category, need, campus, status");
+    .from("assistance_board")
+    .select("id, category, need, campus, status");
   if (error) {
     if (/permission|jwt/i.test(error.message)) return [];
     throw new Error(error.message);
@@ -109,9 +165,10 @@ export async function loadAssistance(supabase: Db): Promise<AssistanceRequest[]>
 }
 
 export async function loadPickups(supabase: Db): Promise<PickupRecord[]> {
+  const { data: auth } = await supabase.auth.getUser();
   const { data, error } = await supabase
     .from("pickups")
-    .select("id, device_id, recycler_id, address, city, collection_date, status, created_at")
+    .select("id, tracking_id, device_id, recycler_id, address, city, collection_date, status, created_at")
     .order("created_at", { ascending: false });
   if (error) {
     if (/permission|jwt/i.test(error.message)) return [];
@@ -121,29 +178,31 @@ export async function loadPickups(supabase: Db): Promise<PickupRecord[]> {
   const deviceIds = rows.map((row) => row.device_id);
   const recyclerIds = rows.map((row) => row.recycler_id).filter((id): id is string => Boolean(id));
   const pickupIds = rows.map((row) => row.id);
-  const [devices, recyclers, events] = await Promise.all([
+  const [devices, recyclers, events, addresses] = await Promise.all([
     deviceIds.length
-      ? supabase.from("devices").select("id, brand, model, category, description").in("id", deviceIds)
-      : Promise.resolve({ data: [] as { id: string; brand: string; model: string; category: string; description: string }[] }),
+      ? supabase.from("devices").select("id, owner_id, brand, model, category, description").in("id", deviceIds)
+      : Promise.resolve({ data: [] as { id: string; owner_id: string; brand: string; model: string; category: string; description: string }[] }),
     recyclerIds.length
       ? supabase.from("recycler_profiles").select("id, org_name, license, city").in("id", recyclerIds)
       : Promise.resolve({ data: [] as { id: string; org_name: string; license: string; city: string }[] }),
     pickupIds.length
-      ? supabase.from("pickup_events").select("pickup_id, status, note, happened_at").in("pickup_id", pickupIds)
-      : Promise.resolve({ data: [] as { pickup_id: string; status: string; note: string; happened_at: string }[] }),
+      ? supabase.from("request_status_history").select("request_id, status, note, created_at").in("request_id", pickupIds)
+      : Promise.resolve({ data: [] as { request_id: string; status: string; note: string; created_at: string }[] }),
+    pickupIds.length
+      ? supabase.from("pickup_addresses").select("pickup_id, address").in("pickup_id", pickupIds)
+      : Promise.resolve({ data: [] as { pickup_id: string; address: string }[], error: null }),
   ]);
+  if (addresses.error && !/permission|jwt/i.test(addresses.error.message)) {
+    throw new Error(addresses.error.message);
+  }
   const deviceById = new Map((devices.data ?? []).map((device) => [device.id, device]));
   const recyclerById = new Map((recyclers.data ?? []).map((recycler) => [recycler.id, recycler]));
-  const eventsByPickup = new Map<string, TimelineEvent[]>();
+  const addressById = new Map((addresses.data ?? []).map((item) => [item.pickup_id, item.address]));
+  const eventsByPickup = new Map<string, { status: string; note: string; created_at: string }[]>();
   for (const event of events.data ?? []) {
-    const list = eventsByPickup.get(event.pickup_id) ?? [];
-    list.push({
-      status: asStatus(event.status),
-      label: event.status,
-      at: event.happened_at,
-      note: event.note,
-    });
-    eventsByPickup.set(event.pickup_id, list);
+    const list = eventsByPickup.get(event.request_id) ?? [];
+    list.push(event);
+    eventsByPickup.set(event.request_id, list);
   }
 
   return rows.map((row) => {
@@ -152,11 +211,12 @@ export async function loadPickups(supabase: Db): Promise<PickupRecord[]> {
     const status = asStatus(row.status);
     return {
       id: row.id,
+      trackingId: row.tracking_id,
       deviceId: row.device_id,
       deviceName: device ? `${device.brand} ${device.model}`.trim() : "Device",
       description: device?.description ?? "",
       category: asCategory(device?.category ?? "accessory"),
-      address: row.address,
+      address: addressById.get(row.id) || "Shared after a partner accepts",
       city: row.city,
       collectionDate: row.collection_date,
       status,
@@ -166,9 +226,11 @@ export async function loadPickups(supabase: Db): Promise<PickupRecord[]> {
         phone: "—",
         license: recycler?.license ?? "—",
       },
-      timeline: eventsByPickup.get(row.id) ?? [
-        { status, label: status, at: row.created_at, note: "" },
-      ],
+      timeline: buildTimeline(status, row.created_at, eventsByPickup.get(row.id) ?? []),
+      showCertificate:
+        Boolean(auth.user) &&
+        device?.owner_id === auth.user?.id &&
+        (status === "donated" || status === "completed"),
       source: "session",
     };
   });
@@ -194,10 +256,10 @@ export async function loadDashboard(supabase: Db) {
       id: pickup.id,
       kind: "pickup" as const,
       title: names.get(pickup.device_id) || "Pickup",
-      detail: `${pickup.status} · ${pickup.city}`,
+      detail: `${statusLabel[asStatus(pickup.status)]} · ${pickup.city}`,
       at: pickup.created_at,
       href: `/pickups/${pickup.id}`,
-      certificate: pickup.status === "donated" || pickup.status === "completed",
+      certificate: names.has(pickup.device_id) && (pickup.status === "donated" || pickup.status === "completed"),
     })),
     ...(rewards.data ?? []).map((reward) => ({
       id: reward.id,
@@ -228,13 +290,33 @@ export async function loadRewards(supabase: Db) {
     at: event.created_at,
     source: "session",
   }));
-  const { data: winners, error } = await supabase
-    .from("monthly_winners")
-    .select("rank, points, profile_id")
-    .eq("published", true)
+  const { data: results, error } = await supabase
+    .from("monthly_results")
+    .select("month, rank, points, full_name, city")
+    .order("month", { ascending: false })
     .order("rank", { ascending: true });
   if (error && !/permission|jwt/i.test(error.message)) throw new Error(error.message);
-  return { board, history, winners: winners ?? [] };
+  return { board, history, results: results ?? [] };
+}
+
+export async function finalizeMonthlyWinners(supabase: Db) {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Sign in before finalizing winners.");
+  const month = new Date();
+  const monthDate = `${month.getUTCFullYear()}-${String(month.getUTCMonth() + 1).padStart(2, "0")}-01`;
+  const board = await loadLeaderboard(supabase);
+  const top = board.slice(0, 3);
+  if (!top.length) throw new Error("There is no contributor to finalize.");
+  const { error } = await supabase.from("monthly_winners").insert(
+    top.map((entry) => ({
+      month: monthDate,
+      rank: entry.rank,
+      profile_id: auth.user.id,
+      points: 0,
+      published: true,
+    })),
+  );
+  if (error) throw new Error(error.message);
 }
 
 export async function loadProfile(supabase: Db): Promise<DemoProfile | null> {
@@ -349,6 +431,7 @@ export async function createDevicePickup(
       address: "Address to be confirmed with the donor",
       city: input.city || "Not set",
       status: "requested",
+      status_note: "Request submitted",
       recycler_id: null,
     })
     .select("id")
@@ -373,14 +456,154 @@ export async function createAssistance(
   if (error) throw new Error(error.message);
 }
 
-export async function saveInspectionEvent(supabase: Db, pickupId: string, note: string) {
-  const { error } = await supabase.from("pickup_events").insert({
+export async function saveInspectionEvent(
+  supabase: Db,
+  pickupId: string,
+  input: { notes: string; working: string; donationReady: boolean },
+) {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Sign in before saving an inspection.");
+  const { data: member, error: memberError } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("profile_id", auth.user.id)
+    .maybeSingle();
+  if (memberError || !member) throw new Error(memberError?.message ?? "This account is not in a partner organization.");
+  const status = await supabase
+    .from("pickups")
+    .update({ status: "inspected", status_note: input.notes })
+    .eq("id", pickupId)
+    .eq("recycler_id", member.organization_id)
+    .select("id");
+  if (status.error) throw new Error(status.error.message);
+  if (!status.data?.length) throw new Error("Not allowed to change this request status");
+  const inspection = await supabase.from("device_inspections").insert({
     pickup_id: pickupId,
-    status: "inspected",
-    note,
-    happened_at: new Date().toISOString(),
+    organization_id: member.organization_id,
+    inspector_id: auth.user.id,
+    notes: input.notes,
+    working_status: input.working,
+    donation_ready: input.donationReady,
   });
+  if (inspection.error) throw new Error(inspection.error.message);
+  const processing = await supabase.from("processing_records").insert({
+    pickup_id: pickupId,
+    organization_id: member.organization_id,
+    status: "inspected",
+    note: input.notes,
+    recorded_by: auth.user.id,
+  });
+  if (processing.error) throw new Error(processing.error.message);
+}
+
+export async function acceptPickup(supabase: Db, pickupId: string) {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Sign in before accepting a request.");
+  const { data: member, error: memberError } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("profile_id", auth.user.id)
+    .maybeSingle();
+  if (memberError || !member) throw new Error(memberError?.message ?? "This account is not in a partner organization.");
+  const update = await supabase
+    .from("pickups")
+    .update({ recycler_id: member.organization_id, status: "assigned", status_note: "Partner assigned" })
+    .eq("id", pickupId)
+    .is("recycler_id", null)
+    .select("id");
+  if (update.error) throw new Error(update.error.message);
+  if (!update.data?.length) throw new Error("That request is no longer open.");
+  const decision = await supabase.from("pickup_decisions").insert({
+    pickup_id: pickupId,
+    organization_id: member.organization_id,
+    decision: "accepted",
+    decided_by: auth.user.id,
+  });
+  if (decision.error) throw new Error(decision.error.message);
+}
+
+export async function rejectPickup(supabase: Db, pickupId: string) {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Sign in before rejecting a request.");
+  const { data: member, error: memberError } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("profile_id", auth.user.id)
+    .maybeSingle();
+  if (memberError || !member) throw new Error(memberError?.message ?? "This account is not in a partner organization.");
+  const decision = await supabase.from("pickup_decisions").insert({
+    pickup_id: pickupId,
+    organization_id: member.organization_id,
+    decision: "rejected",
+    decided_by: auth.user.id,
+  });
+  if (decision.error) throw new Error(decision.error.message);
+}
+
+export async function addOrganizationMember(supabase: Db, profileId: string) {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Sign in before adding a member.");
+  const { data: owner, error: ownerError } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("profile_id", auth.user.id)
+    .eq("member_role", "owner")
+    .maybeSingle();
+  if (ownerError || !owner) throw new Error(ownerError?.message ?? "Only an organization owner can add members.");
+  const insert = await supabase.from("organization_members").insert({
+    organization_id: owner.organization_id,
+    profile_id: profileId,
+    member_role: "member",
+  });
+  if (insert.error) throw new Error(insert.error.message);
+}
+
+export async function updateCollectionStatus(supabase: Db, pickupId: string, status: string, note: string) {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Sign in before updating a collection.");
+  const { data: member, error: memberError } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("profile_id", auth.user.id)
+    .maybeSingle();
+  if (memberError || !member) throw new Error(memberError?.message ?? "This account is not in a partner organization.");
+  const update = await supabase
+    .from("pickups")
+    .update({ status, status_note: note })
+    .eq("id", pickupId)
+    .eq("recycler_id", member.organization_id)
+    .select("id");
+  if (update.error) throw new Error(update.error.message);
+  if (!update.data?.length) throw new Error("Not allowed to change this request status");
+  const processing = await supabase.from("processing_records").insert({
+    pickup_id: pickupId,
+    organization_id: member.organization_id,
+    status,
+    note,
+    recorded_by: auth.user.id,
+  });
+  if (processing.error) throw new Error(processing.error.message);
+}
+
+export async function cancelPickupRequest(supabase: Db, pickupId: string) {
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) throw new Error("Sign in before cancelling a request.");
+  const update = await supabase
+    .from("pickups")
+    .update({ status: "cancelled", status_note: "Cancelled" })
+    .eq("id", pickupId)
+    .select("id");
+  if (update.error) throw new Error(update.error.message);
+  if (!update.data?.length) throw new Error("Not allowed to change this request status");
+}
+
+export async function loadPartnerMonthlyStats(supabase: Db) {
+  const { data, error } = await supabase
+    .from("partner_monthly_stats")
+    .select("organization_id, month, requests, collected, donated")
+    .order("month", { ascending: false });
   if (error) throw new Error(error.message);
+  return data ?? [];
 }
 
 export async function updateRecyclerStatus(supabase: Db, id: string, status: RecyclerAccount["status"]) {
@@ -396,6 +619,6 @@ export async function updateListingStatus(supabase: Db, id: string, status: "ava
   if (status !== "donated" || !listing) return;
   const deviceUpdate = await supabase.from("devices").update({ status: "donated" }).eq("id", listing.device_id);
   if (deviceUpdate.error) throw new Error(deviceUpdate.error.message);
-  const pickupUpdate = await supabase.from("pickups").update({ status: "donated" }).eq("device_id", listing.device_id);
+  const pickupUpdate = await supabase.from("pickups").update({ status: "donated", status_note: "Donated" }).eq("device_id", listing.device_id);
   if (pickupUpdate.error) throw new Error(pickupUpdate.error.message);
 }

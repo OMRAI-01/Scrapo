@@ -74,7 +74,11 @@ function InspectionForm({
         variant="olive"
         onClick={async () => {
           try {
-            await saveInspectionEvent(createClient(), pickup.id, notes.trim() || "Inspection saved.");
+            await saveInspectionEvent(createClient(), pickup.id, {
+              notes: notes.trim() || "Inspection saved.",
+              working,
+              donationReady,
+            });
             onSave({ notes: notes.trim(), donationReady, working });
             setSavedMessage("Inspection saved.");
           } catch (error) {
@@ -93,7 +97,7 @@ export function RecyclerView() {
   const { inspections, saveInspection } = usePrototype();
   const live = useLive("recycler", async () => {
     const supabase = createClient();
-    const pickups = await loadPickups(supabase);
+    const pickups = (await loadPickups(supabase)).filter((pickup) => pickup.recycler.name !== "Awaiting assignment");
     const { data: auth } = await supabase.auth.getUser();
     let org = "Recycler desk";
     if (auth.user) {

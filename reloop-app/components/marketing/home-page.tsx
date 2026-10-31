@@ -17,7 +17,7 @@ const steps = [
   {
     n: "02",
     title: "See an estimate",
-    text: "A transparent prototype formula suggests a value, points, and whether a student could use it.",
+    text: "The estimate shows a value and the points a verified donation can earn.",
   },
   {
     n: "03",
@@ -71,9 +71,9 @@ export function HomePage({ listings, board }: { listings: ListingRecord[]; board
             </div>
             <dl className="mt-10 grid grid-cols-3 gap-3">
               {[
-                ["6", "Sample devices donated"],
-                ["₹18.4k", "Sample value kept in use"],
-                ["Grove", "Sample eco level"],
+                [formatNumber(listings.length), "Devices listed"],
+                [formatNumber(listings.filter((item) => item.donation === "donated").length), "Donated"],
+                [formatNumber(board[0]?.points ?? 0), "Top monthly points"],
               ].map(([value, label]) => (
                 <div key={label} className="rounded-3xl border border-line bg-card px-3 py-4">
                   <dt className="font-display text-xl font-medium text-ink sm:text-2xl">{value}</dt>
@@ -249,14 +249,14 @@ export function HomePage({ listings, board }: { listings: ListingRecord[]; board
                   Ready to make an <span className="font-extrabold">impact?</span>
                 </h2>
                 <p className="mt-4 max-w-xl text-base leading-7 text-on-accent/80">
-                  List one device. The estimate, the pickup, and the student match are all in this prototype so you can walk the whole path.
+                  List one device. The estimate, the pickup, and the student match are saved to your Scrapo account.
                 </p>
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                   <Button href="/signup" variant="olive" size="lg">
-                    Create a prototype account
+                    Create an account
                   </Button>
                   <Button href="/dashboard" variant="soft" size="lg">
-                    Preview the dashboard
+                    Open the dashboard
                   </Button>
                 </div>
               </div>

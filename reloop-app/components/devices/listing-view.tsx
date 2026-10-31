@@ -322,7 +322,7 @@ export function ListingView({ initialCategory }: { initialCategory?: Category })
           {showEstimate && estimate ? (
             <>
               <p className="mt-3 font-display text-4xl font-extrabold text-lime">{formatInr(estimate.value)}</p>
-              <p className="mt-1 text-sm text-muted">{formatNumber(estimate.points)} prototype points</p>
+              <p className="mt-1 text-sm text-muted">{formatNumber(estimate.points)} points</p>
               <Pill tone="olive">{estimate.reuse}</Pill>
               <p className="mt-4 text-sm leading-6 text-muted">{description.trim()}</p>
               <ul className="mt-4 space-y-3">
