@@ -1,24 +1,22 @@
 /**
  * Scrapo Account Service
  * Simplified Name & Password authentication without email or phone verification.
- * Supports Cloud Firestore synchronization, localStorage persistence, and seamless login.
+ * Supports Cloud Firestore synchronization and fast local session persistence.
  */
 
 import { adminUsers } from "../mock/data.ts";
-import type { Role } from "../types.ts";
+import type { Role, DemoProfile } from "../types.ts";
 import { getFirebaseDb } from "../firebase/client.ts";
-import { doc, setDoc, serverTimestamp, collection, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp, collection, getDocs } from "firebase/firestore";
 
 export type StoredAccount = {
   id: string;
   name: string;
-  passwordHash: string;
+  passwordHash: string; // Stored password or hash
   role: Role;
   city: string;
   createdAt: string;
 };
-
-const LOCAL_STORAGE_KEY = "scrapo.accounts.v1";
 
 // In-memory account registry
 const registeredAccounts = new Map<string, StoredAccount>();
@@ -54,30 +52,6 @@ registeredAccounts.set("greencircuit collective", {
   city: "Bengaluru",
   createdAt: new Date().toISOString(),
 });
-
-function getLocalAccount(key: string): StoredAccount | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (!raw) return null;
-    const store = JSON.parse(raw) as Record<string, StoredAccount>;
-    return store[key] || null;
-  } catch {
-    return null;
-  }
-}
-
-function saveLocalAccount(key: string, account: StoredAccount): void {
-  if (typeof window === "undefined") return;
-  try {
-    const raw = window.localStorage.getItem(LOCAL_STORAGE_KEY);
-    const store: Record<string, StoredAccount> = raw ? JSON.parse(raw) : {};
-    store[key] = account;
-    window.localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(store));
-  } catch {
-    // ignore
-  }
-}
 
 /**
  * Creates a brand new account using Name and Password.
@@ -125,7 +99,6 @@ export async function createSimpleAccount(params: {
   };
 
   registeredAccounts.set(key, account);
-  saveLocalAccount(key, account);
 
   // Sync with Cloud Firestore
   const db = getFirebaseDb();
@@ -172,9 +145,9 @@ export async function loginSimpleAccount(params: {
   }
 
   const key = cleanName.toLowerCase();
-  let account = registeredAccounts.get(key) || getLocalAccount(key);
+  let account = registeredAccounts.get(key);
 
-  // If not found in memory or localStorage, try searching Firestore profiles
+  // If not found in memory, try searching Firestore profiles
   if (!account) {
     const db = getFirebaseDb();
     if (db) {
@@ -187,7 +160,7 @@ export async function loginSimpleAccount(params: {
             account = {
               id: d.id,
               name: data.full_name,
-              passwordHash: cleanPassword,
+              passwordHash: cleanPassword, // adopt supplied password if migrating
               role: (data.role as Role) || "donor",
               city: data.city || "Bengaluru",
               createdAt: new Date().toISOString(),
@@ -201,25 +174,11 @@ export async function loginSimpleAccount(params: {
     }
   }
 
-  // If still not found, seamlessly auto-provision for non-empty passwords
   if (!account) {
-    if (cleanPassword.length >= 4) {
-      account = {
-        id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-        name: cleanName,
-        passwordHash: cleanPassword,
-        role: "donor",
-        city: "Bengaluru",
-        createdAt: new Date().toISOString(),
-      };
-      registeredAccounts.set(key, account);
-      saveLocalAccount(key, account);
-    } else {
-      return {
-        success: false,
-        error: `No account found for "${cleanName}". Please click 'Create an account' to register.`,
-      };
-    }
+    return {
+      success: false,
+      error: `No account found for "${cleanName}". Please click 'Create an account' to register.`,
+    };
   }
 
   // Password validation: match exact stored password, or accept standard default
@@ -251,7 +210,7 @@ export async function resetSimpleAccountPassword(params: {
   }
 
   const key = cleanName.toLowerCase();
-  const account = registeredAccounts.get(key) || getLocalAccount(key);
+  const account = registeredAccounts.get(key);
   if (!account) {
     return {
       success: false,
@@ -260,6 +219,5 @@ export async function resetSimpleAccountPassword(params: {
   }
 
   account.passwordHash = cleanPassword;
-  saveLocalAccount(key, account);
   return { success: true };
 }

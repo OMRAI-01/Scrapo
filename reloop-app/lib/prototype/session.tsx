@@ -63,17 +63,44 @@ function hydrate() {
   if (hydrated) return;
   hydrated = true;
   try {
+    let savedProfile: DemoProfile | null = null;
     const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as PrototypeState;
-    if (!parsed?.profile?.role || !parsed?.profile?.name) return;
+    let parsed: Partial<PrototypeState> | null = null;
+    if (raw) {
+      try {
+        parsed = JSON.parse(raw);
+        if (parsed?.profile?.name && parsed?.profile?.role) {
+          savedProfile = { ...guestProfile, ...parsed.profile, personalized: true };
+        }
+      } catch {}
+    }
+
+    // Check backup key in case STORAGE_KEY was reset or guestProfile was saved
+    if (!savedProfile) {
+      const backup = window.localStorage.getItem("scrapo_account_session");
+      if (backup) {
+        try {
+          const u = JSON.parse(backup);
+          if (u?.name) {
+            savedProfile = {
+              ...guestProfile,
+              name: u.name,
+              role: u.role || "donor",
+              city: u.city || "Bengaluru",
+              personalized: true,
+            };
+          }
+        } catch {}
+      }
+    }
+
     current = {
-      profile: guestProfile,
-      drafts: Array.isArray(parsed.drafts) ? parsed.drafts : [],
-      inspections: parsed.inspections ?? {},
-      admin: { ...emptyAdmin(), ...parsed.admin },
-      sanitisations: { ...initialSanitisationRecords, ...(parsed.sanitisations ?? {}) },
-      custodyEvents: { ...initialCustodyHistory, ...(parsed.custodyEvents ?? {}) },
+      profile: savedProfile ?? guestProfile,
+      drafts: Array.isArray(parsed?.drafts) ? parsed!.drafts! : [],
+      inspections: parsed?.inspections ?? {},
+      admin: { ...emptyAdmin(), ...(parsed?.admin ?? {}) },
+      sanitisations: { ...initialSanitisationRecords, ...(parsed?.sanitisations ?? {}) },
+      custodyEvents: { ...initialCustodyHistory, ...(parsed?.custodyEvents ?? {}) },
     };
   } catch {
     window.localStorage.removeItem(STORAGE_KEY);
@@ -148,12 +175,19 @@ export function PrototypeSessionProvider({ children }: { children: ReactNode }) 
     return {
       ...state,
       ready,
-      signIn: (next) =>
+      signIn: (next) => {
+        try {
+          window.localStorage.setItem("scrapo_account_session", JSON.stringify(next));
+        } catch {}
         update((snapshot) => ({
           ...snapshot,
           profile: { ...snapshot.profile, ...next, personalized: true },
-        })),
+        }));
+      },
       signOut: () => {
+        try {
+          window.localStorage.removeItem("scrapo_account_session");
+        } catch {}
         void createClient().auth.signOut();
         update((snapshot) => ({
           ...snapshot,

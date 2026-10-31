@@ -13,13 +13,16 @@ import { DonationCertificate } from "@/components/pickups/donation-certificate";
 import { DigitalTrustPassport } from "@/components/trustshield/digital-trust-passport";
 import { AITrackerPanel } from "@/components/tracker/ai-tracker-panel";
 import { cx } from "@/lib/cx";
-import { initialCustodyHistory, initialSanitisationRecords } from "@/lib/mock/data";
+import { initialCustodyHistory, initialSanitisationRecords, pickups as mockPickups } from "@/lib/mock/data";
 
 export function PickupDetail({ id }: { id: string }) {
   const router = useRouter();
-  const { profile, sanitisations, custodyEvents, admin, verifySanitisation } = usePrototype();
+  const { profile, sanitisations, custodyEvents, admin, verifySanitisation, drafts } = usePrototype();
   const live = useLive(`pickup:${id}`, () => loadPickups(createClient()));
-  const pickup = live.data?.find((item) => item.id === id);
+  const pickup =
+    live.data?.find((item) => item.id === id) ??
+    drafts?.find((item) => item.id === id) ??
+    mockPickups.find((item) => item.id === id);
 
   if (live.phase === "loading") return <PageSkeleton cards={2} />;
   if (live.phase === "error") {

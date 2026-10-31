@@ -7,6 +7,8 @@ import { categoryLabel, formatDate, statusLabel } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import { loadPickups } from "@/lib/supabase/records";
 import { useLive } from "@/lib/supabase/use-live";
+import { usePrototype } from "@/lib/prototype/session";
+import { pickups as mockPickups } from "@/lib/mock/data";
 import { useState } from "react";
 import type { PickupStatus } from "@/lib/types";
 
@@ -20,9 +22,11 @@ const filters: Array<PickupStatus | "all" | "unassigned"> = [
 ];
 
 export function PickupsView() {
+  const { drafts } = usePrototype();
   const live = useLive("pickups", () => loadPickups(createClient()));
   const [filter, setFilter] = useState<(typeof filters)[number]>("all");
-  const all = live.data ?? [];
+  const basePickups = (live.data && live.data.length > 0) ? live.data : mockPickups;
+  const all = [...(drafts ?? []), ...basePickups.filter((p) => !drafts?.some((d) => d.id === p.id))];
   const visible = all.filter((pickup) => {
     if (filter === "all") return true;
     if (filter === "unassigned") return pickup.recycler.name === "Awaiting assignment";
